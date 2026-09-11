@@ -4,7 +4,6 @@ from datetime import datetime, timedelta, timezone
 import csv
 import logging
 from pathlib import Path
-from xml.etree import ElementTree as ET
 
 import aiohttp
 import voluptuous as vol
@@ -25,10 +24,12 @@ CONF_LIMIT = "limit"
 
 DEFAULT_EVENT_TYPE = "dep"
 DEFAULT_LIMIT = 10
-DEFAULT_KVV_API_URL = "https://www.kvv.de/internet/service/ps/extapi/trias"
-DEFAULT_REQUESTOR_REF = "FART"
+KVV_DM_API_URL = "https://www.kvv.de/tunnelEfaDirect.php"
 
-TRIAS_NS = "http://www.vdv.de/trias"
+# KVV/EFA mode-of-transport codes that represent rail-like services; anything
+# else (bus codes) is treated as "bus". Used only as a fallback for entries
+# that don't carry an explicit pointType.
+RAIL_MOT_TYPES = {"0", "1", "2", "3", "4", "13", "14", "15", "16", "17", "18"}
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
     {
@@ -96,8 +97,6 @@ class FartDeparturesSensor(SensorEntity):
     ) -> None:
         self._station_id = station_id
         self._station_selector = station_selector
-        self._api_url = DEFAULT_KVV_API_URL
-        self._requestor_ref = DEFAULT_REQUESTOR_REF
         self._event_type = event_type
         self._limit = limit
         self._attr_unique_id = f"fart_{station_id or station_selector or 'unconfigured'}_{event_type}"
@@ -160,29 +159,27 @@ class FartDeparturesSensor(SensorEntity):
         station_name: str,
         city_name: str,
     ) -> dict[str, object]:
-        xml_body = _build_request_xml(
-            requestor_ref=self._requestor_ref,
-            station_id=station_id,
-            event_type=self._event_type,
-            limit=self._limit,
-        )
+        params = {
+            "action": "XSLT_DM_REQUEST",
+            "outputFormat": "JSON",
+            "type_dm": "stop",
+            "name_dm": station_id,
+            "mode": "direct",
+            "useRealtime": "1",
+            "limit": str(self._limit),
+        }
 
         async with aiohttp.ClientSession() as session:
-            async with session.post(
-                self._api_url,
-                data=xml_body,
-                headers={"Content-Type": "application/xml; charset=utf-8"},
-            ) as response:
-                response_text = await response.text()
+            async with session.get(KVV_DM_API_URL, params=params) as response:
+                if response.status != 200:
+                    body_text = await response.text()
+                    raise RuntimeError(
+                        f"Request failed with status {response.status}: {body_text[:200]}"
+                    )
+                payload = await response.json(content_type=None)
 
-        if response.status != 200:
-            raise RuntimeError(
-                f"Request failed with status {response.status}: {response_text[:200]}"
-            )
-
-        root = ET.fromstring(response_text)
-        results = _extract_stop_event_results(root)
-        platforms = _map_results_to_platforms(results)
+        departures = payload.get("departureList") or []
+        platforms = _map_departures_to_platforms(departures)
 
         return {
             "stationName": station_name,
@@ -192,105 +189,44 @@ class FartDeparturesSensor(SensorEntity):
         }
 
 
-def _build_request_xml(requestor_ref: str, station_id: str, event_type: str, limit: int) -> str:
-    stop_event_type = "departure" if event_type == "dep" else "arrival"
-    timestamp = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-
-    return f"""<?xml version=\"1.0\" encoding=\"UTF-8\"?>
-<Trias version=\"1.1\"
-  xmlns=\"http://www.vdv.de/trias\"
-  xmlns:siri=\"http://www.siri.org.uk/siri\"
-  xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">
-  <ServiceRequest>
-    <siri:RequestTimeStamp>{_escape_xml(timestamp)}</siri:RequestTimeStamp>
-    <siri:RequestorRef>{_escape_xml(requestor_ref)}</siri:RequestorRef>
-    <RequestPayload>
-      <StopEventRequest>
-        <Location>
-          <LocationRef>
-            <StopPlaceRef>{_escape_xml(station_id)}</StopPlaceRef>
-          </LocationRef>
-          <DepArrTime>{_escape_xml(timestamp)}</DepArrTime>
-        </Location>
-        <Params>
-          <NumberOfResults>{limit}</NumberOfResults>
-          <StopEventType>{stop_event_type}</StopEventType>
-          <IncludeRealtimeData>true</IncludeRealtimeData>
-          <IncludeOperatingDays>false</IncludeOperatingDays>
-          <IncludePreviousCalls>false</IncludePreviousCalls>
-          <IncludeOnwardCalls>false</IncludeOnwardCalls>
-        </Params>
-      </StopEventRequest>
-    </RequestPayload>
-  </ServiceRequest>
-</Trias>"""
-
-
-def _extract_stop_event_results(root: ET.Element) -> list[ET.Element]:
-    results = root.findall(f".//{{{TRIAS_NS}}}StopEventResult")
-    return results if results else []
-
-
-def _map_results_to_platforms(results: list[ET.Element]) -> list[dict[str, object]]:
+def _map_departures_to_platforms(departures: list[dict[str, object]]) -> list[dict[str, object]]:
     platforms: dict[str, dict[str, object]] = {}
 
-    for result in results:
-        stop_event = result.find(f"{{{TRIAS_NS}}}StopEvent")
-        if stop_event is None:
-            continue
-
-        call_at_stop = stop_event.find(f"{{{TRIAS_NS}}}ThisCall/{{{TRIAS_NS}}}CallAtStop")
-        if call_at_stop is None:
-            continue
-
-        service_departure = call_at_stop.find(f"{{{TRIAS_NS}}}ServiceDeparture")
-        service_arrival = call_at_stop.find(f"{{{TRIAS_NS}}}ServiceArrival")
-
-        if service_departure is None and service_arrival is None:
-            continue
-
-        event_node = service_departure or service_arrival
-        planned_time = _text_of(event_node.find(f"{{{TRIAS_NS}}}TimetabledTime"))
-        real_time = _text_of(event_node.find(f"{{{TRIAS_NS}}}EstimatedTime"))
-
+    for entry in departures:
+        planned_time = _format_datetime(entry.get("dateTime"))
         if not planned_time:
             continue
+        real_time = _format_datetime(entry.get("realDateTime")) or planned_time
 
-        service = stop_event.find(f"{{{TRIAS_NS}}}Service")
-        line_name = _text_of(service.find(f"{{{TRIAS_NS}}}PublishedLineName"))
-        if not line_name:
-            line_name = _text_of(service.find(f"{{{TRIAS_NS}}}PublishedServiceName"))
-        if not line_name:
-            line_name = _text_of(service.find(f"{{{TRIAS_NS}}}LineRef")) or "—"
-
-        platform_label = _text_of(call_at_stop.find(f"{{{TRIAS_NS}}}PlannedBay")) or ""
-        platform_type = "rail"
-        platform_name = platform_label
-
-        if platform_label.startswith("Gleis"):
-            platform_name = platform_label[len("Gleis") :].strip()
-        elif platform_label.startswith("Bstg."):
-            platform_type = "bus"
-            platform_name = platform_label[len("Bstg.") :].strip()
-        elif platform_label:
-            platform_name = platform_label
+        serving_line = entry.get("servingLine") or {}
+        platform_name = str(entry.get("platformName") or entry.get("platform") or "").strip()
+        if platform_name.startswith("Gleis"):
+            platform_name = platform_name[len("Gleis") :].strip()
+        elif platform_name.startswith("Bstg."):
+            platform_name = platform_name[len("Bstg.") :].strip()
+        platform_type = (
+            "rail"
+            if entry.get("pointType") == "Gleis" or serving_line.get("motType") in RAIL_MOT_TYPES
+            else "bus"
+        )
 
         key = f"{platform_type}:{platform_name or 'unknown'}"
         if key not in platforms:
             platforms[key] = {
-                "platform": {"type": platform_type, "name": platform_name or ""},
+                "platform": {"type": platform_type, "name": platform_name},
                 "departures": [],
             }
 
-        direction = _text_of(service.find(f"{{{TRIAS_NS}}}DestinationText")) or "—"
-        departure = {
-            "lineName": line_name,
-            "direction": [direction] if direction != "—" else [],
-            "plannedTime": planned_time,
-            "realTime": real_time,
-            "vehicleType": _text_of(service.find(f"{{{TRIAS_NS}}}Mode/{{{TRIAS_NS}}}PtMode")) or "",
-        }
-        platforms[key]["departures"].append(departure)
+        direction = serving_line.get("direction") or "—"
+        platforms[key]["departures"].append(
+            {
+                "lineName": serving_line.get("number") or serving_line.get("symbol") or "—",
+                "direction": [direction] if direction != "—" else [],
+                "plannedTime": planned_time,
+                "realTime": real_time,
+                "vehicleType": serving_line.get("name") or "",
+            }
+        )
 
     output = []
     for platform_entry in platforms.values():
@@ -304,20 +240,17 @@ def _map_results_to_platforms(results: list[ET.Element]) -> list[dict[str, objec
     return output
 
 
-def _text_of(node: ET.Element | None) -> str | None:
-    if node is None:
+def _format_datetime(parts: dict[str, str] | None) -> str | None:
+    if not parts:
         return None
 
-    text = (node.text or "").strip()
-    if text:
-        return text
-
-    for child in node:
-        child_text = _text_of(child)
-        if child_text:
-            return child_text
-
-    return None
+    try:
+        return (
+            f"{int(parts['year']):04d}-{int(parts['month']):02d}-{int(parts['day']):02d}"
+            f"T{int(parts['hour']):02d}:{int(parts['minute']):02d}:00"
+        )
+    except (KeyError, ValueError):
+        return None
 
 
 def _station_metadata_by_label() -> dict[str, dict[str, str]]:
@@ -351,13 +284,3 @@ def _station_metadata_by_gid() -> dict[str, dict[str, str]]:
     for label, metadata in _station_metadata_by_label().items():
         lookup[metadata["gid"]] = metadata
     return lookup
-
-
-def _escape_xml(value: str) -> str:
-    return (
-        value.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
-        .replace("'", "&apos;")
-    )
