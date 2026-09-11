@@ -1,8 +1,11 @@
 {
   "domain": "fart",
   "name": "FART",
-  "version": "1.3.0",
-  "dependencies": ["http", "frontend"],
+  "version": "1.4.0",
+  "dependencies": [
+    "http",
+    "frontend"
+  ],
   "documentation": "https://example.invalid/fart",
   "issue_tracker": "https://example.invalid/fart/issues",
   "codeowners": [],
