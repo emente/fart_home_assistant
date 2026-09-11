@@ -3,20 +3,12 @@ Karlsruhe KVV depature times. Inspired by https://github.com/demartinomarco/F.A.
 
 ## HACS install flow
 
-1. In HACS, add this repository as a custom repository.
+1. In HACS, add this repository as a custom repository (category: Integration).
 2. Install it via HACS.
 3. Restart Home Assistant.
-4. Open Home Assistant and go Settings -> Integrations
-7. Click `Add Integration` and choose `FART`.
-8. Select the station from the UI list.
-9. Add the following to your Home Assistant `configuration.yaml` to make the custom card load automatically:
+4. Go to Settings -> Devices & services.
+5. Click `Add Integration` and choose `FART`.
+6. Select the station from the list.
+7. Open the dashboard editor and add the `FART` card.
 
-```yaml
-lovelace:
-  resources:
-    - url: /local/fart-ha-card.js
-      type: module
-```
-
-10. Restart Home Assistant again.
-11. Open the dashboard editor and add the `FART` card.
+The `fart-ha-card.js` resource is registered automatically by the integration (via `add_extra_js_url`) — there's no need to add it manually under Settings -> Dashboards -> Resources.
