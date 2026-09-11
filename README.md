@@ -9,6 +9,11 @@ Karlsruhe KVV depature times. Inspired by https://github.com/demartinomarco/F.A.
 4. Go to Settings -> Devices & services.
 5. Click `Add Integration` and choose `FART`.
 6. Select the station from the list.
-7. A notification appears with the exact card YAML (including the station's entity ID) and a link to your dashboards — open a dashboard, click **+ Add Card** -> **Manual**, and paste it in.
+7. A notification appears with setup steps: adding `/fart_files/fart-ha-card.js` as a dashboard resource (one-time, only needed once even with multiple stations) and the exact card YAML (including the station's entity ID) to paste into a dashboard.
 
-The `fart-ha-card.js` resource is registered automatically by the integration (via `add_extra_js_url`) — there's no need to add it manually under Settings -> Dashboards -> Resources.
+The resource only needs adding once:
+
+1. Settings -> Dashboards -> the ⋮ menu (top right) -> Resources.
+2. Add Resource -> URL `/fart_files/fart-ha-card.js` -> Resource type `JavaScript Module` -> Create.
+
+(If `Resources` isn't in that menu, enable `Advanced Mode` in your user profile.)

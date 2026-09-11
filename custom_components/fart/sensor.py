@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 import csv
 import logging
 from pathlib import Path
@@ -253,6 +254,7 @@ def _format_datetime(parts: dict[str, str] | None) -> str | None:
         return None
 
 
+@lru_cache(maxsize=1)
 def _station_metadata_by_label() -> dict[str, dict[str, str]]:
     csv_path = Path(__file__).with_name("stops.csv")
     lookup: dict[str, dict[str, str]] = {}

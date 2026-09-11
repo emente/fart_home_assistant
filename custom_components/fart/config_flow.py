@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+from functools import lru_cache
 from pathlib import Path
 
 import voluptuous as vol
@@ -48,6 +49,7 @@ class FartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
 
+@lru_cache(maxsize=1)
 def _load_station_options() -> dict[str, str]:
     csv_path = Path(__file__).with_name("stops.csv")
     options: dict[str, str] = {}
