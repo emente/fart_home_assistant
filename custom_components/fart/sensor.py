@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
+import asyncio
 import csv
+import json
 import logging
 from pathlib import Path
 
@@ -170,14 +172,36 @@ class FartDeparturesSensor(SensorEntity):
             "limit": str(self._limit),
         }
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(KVV_DM_API_URL, params=params) as response:
-                if response.status != 200:
-                    body_text = await response.text()
-                    raise RuntimeError(
-                        f"Request failed with status {response.status}: {body_text[:200]}"
-                    )
-                payload = await response.json(content_type=None)
+        payload: dict[str, object] | None = None
+        last_error: Exception | None = None
+
+        for attempt in range(2):
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(KVV_DM_API_URL, params=params) as response:
+                        body_text = await response.text()
+                        if response.status != 200:
+                            raise RuntimeError(
+                                f"Request failed with status {response.status}: {body_text[:200]}"
+                            )
+                        try:
+                            payload = json.loads(body_text)
+                        except json.JSONDecodeError as err:
+                            raise RuntimeError(
+                                f"KVV API returned non-JSON response ({len(body_text)} bytes): "
+                                f"{body_text[:200]!r}"
+                            ) from err
+                break
+            except (RuntimeError, aiohttp.ClientError) as err:
+                last_error = err
+                if attempt == 0:
+                    _LOGGER.debug("FART fetch attempt %s failed, retrying: %s", attempt + 1, err)
+                    await asyncio.sleep(2)
+                    continue
+                raise
+
+        if payload is None:
+            raise last_error or RuntimeError("FART fetch failed for an unknown reason")
 
         departures = payload.get("departureList") or []
         platforms = _map_departures_to_platforms(departures)
