@@ -1,3 +1,76 @@
+const SLATE_DARK = '#0f172a';
+
+// Line colors ported from the original F.A.R.T. project
+// (https://github.com/demartinomarco/F.A.R.T./blob/master/src/lib/styles/lines.ts)
+const LINE_STYLES = {
+  S1: { background: '#008256', text: '#fff' },
+  S11: { background: '#008256', text: '#fff' },
+  S12: { background: '#008256', text: '#fff' },
+
+  S2: { background: '#aa70b8', text: SLATE_DARK },
+
+  S3: { background: '#ffdc01', text: SLATE_DARK },
+
+  S31: { background: '#007870', text: '#fff' },
+  S32: { background: '#007870', text: '#fff' },
+  S33: { background: '#824391', text: '#fff' },
+
+  S4: { background: '#9f184c', text: '#fff' },
+
+  S41: { background: '#bed730', text: SLATE_DARK },
+  S42: { background: '#00728d', text: '#fff' },
+
+  S5: { background: '#f59795', text: SLATE_DARK },
+  S51: { background: '#f59795', text: SLATE_DARK },
+  S52: { background: '#f59795', text: SLATE_DARK },
+
+  S6: { background: '#01bdf2', text: SLATE_DARK },
+
+  S7: { background: '#fff101', text: SLATE_DARK },
+  S71: { background: '#fff101', text: SLATE_DARK },
+
+  S8: { background: '#6e6928', text: '#fff' },
+  S81: { background: '#6e6928', text: '#fff' },
+
+  S9: { background: '#7fc241', text: SLATE_DARK },
+
+  1: { background: '#d61a20', text: '#fff' },
+  2: { background: '#0072bc', text: '#fff' },
+  3: { background: '#937138', text: '#fff' },
+  4: { background: '#fec210', text: SLATE_DARK },
+  5: { background: '#15c0f2', text: SLATE_DARK },
+  6: { background: '#80c342', text: SLATE_DARK },
+  7: { background: '#58595b', text: '#fff' },
+  8: { background: '#f7931d', text: SLATE_DARK },
+  10: { background: '#a4d7bb', text: SLATE_DARK }
+};
+
+function getLineStyle(lineName, platformType) {
+  const name = String(lineName || '');
+
+  if (/^(ICE|IC|EC|ECE)/i.test(name)) {
+    return { background: '#d61a20', text: '#fff' };
+  }
+
+  if (/^(NJ|EN)/i.test(name)) {
+    return { background: '#001f52', text: '#fff' };
+  }
+
+  if (name.startsWith('TGV')) {
+    return { background: '#224980', text: '#fff' };
+  }
+
+  if (/^(RE|RB|IRE|MEX)/i.test(name)) {
+    return { background: '#ffd600', text: SLATE_DARK };
+  }
+
+  if (platformType === 'bus') {
+    return { background: '#882287', text: '#fff' };
+  }
+
+  return LINE_STYLES[name] || { background: SLATE_DARK, text: '#fff' };
+}
+
 class FartHaCard extends HTMLElement {
   constructor() {
     super();
@@ -114,12 +187,14 @@ class FartHaCard extends HTMLElement {
             )
           : 0;
 
+        const lineStyle = getLineStyle(nextDeparture.lineName, platformEntry.platform.type);
+
         return `
           <div class="platform-row">
             <div class="platform-name">${this.formatPlatformLabel(platformEntry.platform)}</div>
             <div class="platform-content">
               <div class="line-and-time">
-                <span class="line">${nextDeparture.lineName || '—'}</span>
+                <span class="line-badge" style="background:${lineStyle.background}; color:${lineStyle.text};">${nextDeparture.lineName || '—'}</span>
                 <span class="time">${this.formatTime(realTime)}</span>
               </div>
               <div class="meta">${delayMin > 0 ? `+${delayMin} min` : 'on time'}</div>
@@ -157,10 +232,12 @@ class FartHaCard extends HTMLElement {
               ? departure.direction.join(', ')
               : '—';
 
+            const lineStyle = getLineStyle(departure.lineName, platformEntry.platform.type);
+
             return `
               <div class="expanded-row">
                 <div class="departure-main">
-                  <div class="expanded-line-badge">${departure.lineName || '—'}</div>
+                  <div class="expanded-line-badge" style="background:${lineStyle.background}; color:${lineStyle.text};">${departure.lineName || '—'}</div>
                   <div class="expanded-direction">${direction}</div>
                 </div>
                 <div class="expanded-meta">
@@ -202,11 +279,11 @@ class FartHaCard extends HTMLElement {
         * { box-sizing: border-box; }
 
         .card {
-          background: var(--ha-card-background, #ffffff);
+          background: var(--ha-card-background, var(--card-background-color, #ffffff));
           border: 1px solid var(--divider-color, rgba(0,0,0,0.08));
           border-radius: 18px;
           box-shadow: var(--ha-card-box-shadow, 0 1px 3px rgba(0,0,0,0.12));
-          padding: 16px;
+          padding: 10px 14px;
           cursor: pointer;
         }
 
@@ -214,8 +291,8 @@ class FartHaCard extends HTMLElement {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          gap: 12px;
-          margin-bottom: 12px;
+          gap: 8px;
+          margin-bottom: 6px;
         }
 
         .title-wrap {
@@ -233,8 +310,9 @@ class FartHaCard extends HTMLElement {
 
         h2 {
           margin: 0;
-          font-size: 1.1rem;
+          font-size: 1rem;
           font-weight: 700;
+          line-height: 1.2;
         }
 
         .status {
@@ -246,14 +324,13 @@ class FartHaCard extends HTMLElement {
         .body {
           display: flex;
           flex-direction: column;
-          gap: 6px;
         }
 
         .platform-row {
           display: flex;
-          justify-content: space-between;
           align-items: center;
-          padding: 10px 0;
+          gap: 10px;
+          padding: 5px 0;
           border-bottom: 1px solid var(--divider-color, rgba(0,0,0,0.06));
         }
 
@@ -262,6 +339,7 @@ class FartHaCard extends HTMLElement {
         }
 
         .platform-name {
+          flex: 0 0 auto;
           font-size: 0.78rem;
           font-weight: 700;
           text-transform: uppercase;
@@ -269,32 +347,45 @@ class FartHaCard extends HTMLElement {
         }
 
         .platform-content {
+          flex: 1 1 auto;
           display: flex;
-          flex-direction: column;
-          align-items: flex-end;
-          text-align: right;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+          min-width: 0;
+          line-height: 1.2;
         }
 
         .line-and-time {
           display: flex;
           align-items: center;
           gap: 8px;
+          min-width: 0;
         }
 
-        .line {
-          font-size: 1.05rem;
+        .line-badge {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 24px;
+          height: 20px;
+          padding: 0 6px;
+          border-radius: 5px;
+          font-size: 0.78rem;
           font-weight: 800;
-          color: var(--primary-text-color, #111827);
+          line-height: 1;
+          box-shadow: inset 0 0 0 1px rgba(255,255,255,0.15);
         }
 
         .time {
-          font-size: 0.92rem;
+          font-size: 0.85rem;
           font-weight: 700;
           color: var(--primary-color, #0f766e);
         }
 
         .meta {
-          font-size: 0.72rem;
+          flex: 0 0 auto;
+          font-size: 0.68rem;
           color: var(--secondary-text-color, #6b7280);
         }
 
@@ -347,11 +438,27 @@ class FartHaCard extends HTMLElement {
         }
 
         .close-button {
+          flex: 0 0 auto;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 40px;
+          height: 40px;
           border: none;
+          border-radius: 50%;
           background: transparent;
-          font-size: 0.9rem;
           cursor: pointer;
           color: var(--secondary-text-color, #6b7280);
+          transition: background-color 0.15s ease-in-out;
+        }
+
+        .close-button:hover,
+        .close-button:focus-visible {
+          background: rgba(128, 128, 128, 0.16);
+        }
+
+        .close-button svg {
+          display: block;
         }
 
         .expanded-grid {
@@ -365,7 +472,7 @@ class FartHaCard extends HTMLElement {
           border: 1px solid var(--divider-color, rgba(0,0,0,0.08));
           border-radius: 12px;
           padding: 12px;
-          background: rgba(148, 163, 184, 0.04);
+          background: var(--secondary-background-color, rgba(148, 163, 184, 0.04));
         }
 
         .expanded-header {
@@ -413,8 +520,6 @@ class FartHaCard extends HTMLElement {
           border-radius: 6px;
           font-size: 0.75rem;
           font-weight: 800;
-          color: #fff;
-          background: var(--primary-color, #0f766e);
           box-shadow: inset 0 0 0 1px rgba(255,255,255,0.15);
         }
 
@@ -454,20 +559,6 @@ class FartHaCard extends HTMLElement {
             flex-direction: column;
           }
 
-          .platform-row {
-            align-items: flex-start;
-            flex-direction: column;
-          }
-
-          .platform-content {
-            align-items: flex-start;
-            text-align: left;
-          }
-
-          .expanded-row {
-            grid-template-columns: 1fr;
-          }
-
           .expanded-meta {
             align-items: flex-start;
           }
@@ -496,7 +587,11 @@ class FartHaCard extends HTMLElement {
         <div class="modal" role="dialog" aria-modal="true">
           <div class="modal-header">
             <h3>${title} • ${subtitle}</h3>
-            <button class="close-button" type="button">Close</button>
+            <button class="close-button" type="button" aria-label="Close">
+              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                <path fill="currentColor" d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"></path>
+              </svg>
+            </button>
           </div>
           <div>${expandedRows}</div>
         </div>
