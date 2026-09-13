@@ -148,23 +148,36 @@ class FartHaCard extends HTMLElement {
     }
   }
 
-  _getStationSettings(stationId) {
-    const entry = this._settingsByStation[stationId];
+  // Settings are keyed per card instance (not per entity/station), so two
+  // cards pointing at the same sensor don't silently share customization.
+  // Cards with identical entity/title/station_name will still collide;
+  // set an explicit `card_id` in the card config to tell them apart.
+  _getSettingsKey() {
+    if (this._config.card_id) {
+      return `id:${this._config.card_id}`;
+    }
+
+    return `cfg:${this._config.entity || ''}|${this._config.title || ''}|${this._config.station_name || ''}`;
+  }
+
+  _getStationSettings(settingsKey) {
+    const entry = this._settingsByStation[settingsKey];
     return {
       renames: (entry && entry.renames) || {},
-      hidden: (entry && entry.hidden) || {}
+      hidden: (entry && entry.hidden) || {},
+      hideTitle: !!(entry && entry.hideTitle)
     };
   }
 
-  _saveSettingsFromForm(stationId) {
-    if (!stationId) {
+  _saveSettingsFromForm(settingsKey) {
+    if (!settingsKey) {
       return;
     }
 
     const renames = {};
     const hidden = {};
 
-    this.shadowRoot.querySelectorAll('.settings-row').forEach((row) => {
+    this.shadowRoot.querySelectorAll('.settings-row[data-key]').forEach((row) => {
       const key = row.getAttribute('data-key');
       if (!key) {
         return;
@@ -181,7 +194,10 @@ class FartHaCard extends HTMLElement {
       }
     });
 
-    this._settingsByStation = { ...this._settingsByStation, [stationId]: { renames, hidden } };
+    const hideTitleInput = this.shadowRoot.querySelector('.settings-hide-title-input');
+    const hideTitle = !!(hideTitleInput && hideTitleInput.checked);
+
+    this._settingsByStation = { ...this._settingsByStation, [settingsKey]: { renames, hidden, hideTitle } };
     this._settingsView = false;
     this.render();
 
@@ -207,13 +223,13 @@ class FartHaCard extends HTMLElement {
     }
 
     const attributes = state.attributes || {};
-    const stationId = attributes.station_id || this._config.entity;
+    const settingsKey = this._getSettingsKey();
     const rawPlatforms = (Array.isArray(attributes.platforms) ? attributes.platforms : []).map((entry) => ({
       ...entry,
       platform: { ...entry.platform, key: platformKey(entry.platform) }
     }));
 
-    const settings = this._getStationSettings(stationId);
+    const settings = this._getStationSettings(settingsKey);
     const platforms = rawPlatforms
       .filter((entry) => !settings.hidden[entry.platform.key])
       .map((entry) => {
@@ -222,7 +238,7 @@ class FartHaCard extends HTMLElement {
       });
 
     return {
-      stationId,
+      settingsKey,
       stationName: attributes.station_name || attributes.stationName || state.name || 'FART',
       cityName: attributes.city_name || attributes.cityName || '',
       platforms,
@@ -384,39 +400,48 @@ class FartHaCard extends HTMLElement {
 
   buildSettingsPanel(data) {
     const rawPlatforms = data?.rawPlatforms || [];
-    if (rawPlatforms.length === 0) {
-      return '<div class="expanded-empty">No platform data available yet.</div>';
-    }
+    const settings = data?.settings || { renames: {}, hidden: {}, hideTitle: false };
 
-    const settings = data.settings || { renames: {}, hidden: {} };
+    const titleRow = `
+      <div class="settings-row settings-row-title">
+        <div class="settings-title-label">Card title</div>
+        <label class="settings-hide-label">
+          <input type="checkbox" class="settings-hide-title-input" ${settings.hideTitle ? 'checked' : ''}>
+          Hide
+        </label>
+      </div>
+    `;
 
-    const rows = rawPlatforms
-      .map((entry) => {
-        const key = entry.platform.key;
-        const defaultLabel = this.formatPlatformLabel({ ...entry.platform, displayLabel: null });
-        const currentName = settings.renames[key] || '';
-        const isHidden = !!settings.hidden[key];
+    const platformRows = rawPlatforms.length === 0
+      ? '<div class="expanded-empty">No platform data available yet.</div>'
+      : rawPlatforms
+          .map((entry) => {
+            const key = entry.platform.key;
+            const defaultLabel = this.formatPlatformLabel({ ...entry.platform, displayLabel: null });
+            const currentName = settings.renames[key] || '';
+            const isHidden = !!settings.hidden[key];
 
-        return `
-          <div class="settings-row" data-key="${escapeHtml(key)}">
-            <input
-              type="text"
-              class="settings-name-input"
-              placeholder="${escapeHtml(defaultLabel)}"
-              value="${escapeHtml(currentName)}"
-            >
-            <label class="settings-hide-label">
-              <input type="checkbox" class="settings-hide-input" ${isHidden ? 'checked' : ''}>
-              Hide
-            </label>
-          </div>
-        `;
-      })
-      .join('');
+            return `
+              <div class="settings-row" data-key="${escapeHtml(key)}">
+                <input
+                  type="text"
+                  class="settings-name-input"
+                  placeholder="${escapeHtml(defaultLabel)}"
+                  value="${escapeHtml(currentName)}"
+                >
+                <label class="settings-hide-label">
+                  <input type="checkbox" class="settings-hide-input" ${isHidden ? 'checked' : ''}>
+                  Hide
+                </label>
+              </div>
+            `;
+          })
+          .join('');
 
     return `
       <div class="settings-panel">
-        ${rows}
+        ${titleRow}
+        ${platformRows}
         <div class="settings-actions">
           <button type="button" class="settings-save-button">Save</button>
         </div>
@@ -456,19 +481,6 @@ class FartHaCard extends HTMLElement {
           align-items: center;
           gap: 8px;
           margin-bottom: 6px;
-        }
-
-        .title-wrap {
-          display: flex;
-          flex-direction: column;
-        }
-
-        .eyebrow {
-          font-size: 10px;
-          font-weight: 700;
-          letter-spacing: 0.08em;
-          text-transform: uppercase;
-          color: var(--secondary-text-color, #6b7280);
         }
 
         h2 {
@@ -666,6 +678,12 @@ class FartHaCard extends HTMLElement {
           color: var(--secondary-text-color, #6b7280);
         }
 
+        .settings-title-label {
+          flex: 1 1 auto;
+          font-size: 0.85rem;
+          font-weight: 700;
+        }
+
         .settings-actions {
           display: flex;
           justify-content: flex-end;
@@ -788,12 +806,13 @@ class FartHaCard extends HTMLElement {
       </style>
 
       <div class="card" tabindex="0" role="button" aria-label="Open departure schedule">
-        <div class="header">
-          <div class="title-wrap">
-            <div class="eyebrow">FART</div>
-            <h2>${title}</h2>
-          </div>
-        </div>
+        ${data && data.settings && data.settings.hideTitle
+          ? ''
+          : `
+            <div class="header">
+              <h2>${title}</h2>
+            </div>
+          `}
 
         <div class="body">
           ${!this._hass || !this._config.entity
@@ -867,7 +886,7 @@ class FartHaCard extends HTMLElement {
     if (settingsSave) {
       settingsSave.onclick = (event) => {
         event.stopPropagation();
-        this._saveSettingsFromForm(data?.stationId);
+        this._saveSettingsFromForm(data?.settingsKey);
       };
     }
 
