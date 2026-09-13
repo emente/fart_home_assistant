@@ -85,6 +85,21 @@ function getLineStyle(lineName, platformType) {
   return LINE_STYLES[name] || { background: SLATE_DARK, text: '#fff' };
 }
 
+// Assigns each card element a stable, per-dashboard-view instance index so
+// that pasting the exact same card YAML onto multiple dashboards (as the
+// setup notification suggests) still gets independent settings: the
+// dashboard/view URL differs even when the config is byte-for-byte
+// identical. Two copies of the same card stacked on the *same* view fall
+// back to connection order, which is deterministic across reloads because
+// the dashboard renders cards in the same YAML order every time.
+const viewInstanceCounters = new Map();
+
+function nextViewInstanceIndex(pathname) {
+  const current = viewInstanceCounters.get(pathname) || 0;
+  viewInstanceCounters.set(pathname, current + 1);
+  return current;
+}
+
 class FartHaCard extends HTMLElement {
   constructor() {
     super();
@@ -96,6 +111,7 @@ class FartHaCard extends HTMLElement {
     this._settingsByStation = {};
     this._settingsLoaded = false;
     this._settingsLoading = false;
+    this._autoInstanceKey = null;
   }
 
   setConfig(config) {
@@ -125,6 +141,10 @@ class FartHaCard extends HTMLElement {
   }
 
   connectedCallback() {
+    if (this._autoInstanceKey === null) {
+      const pathname = (window.location && window.location.pathname) || '';
+      this._autoInstanceKey = `${pathname}#${nextViewInstanceIndex(pathname)}`;
+    }
     this.render();
   }
 
@@ -149,15 +169,17 @@ class FartHaCard extends HTMLElement {
   }
 
   // Settings are keyed per card instance (not per entity/station), so two
-  // cards pointing at the same sensor don't silently share customization.
-  // Cards with identical entity/title/station_name will still collide;
-  // set an explicit `card_id` in the card config to tell them apart.
+  // cards pointing at the same sensor don't silently share customization -
+  // including two copies of the exact same YAML pasted onto different
+  // dashboards, which is what the setup notification suggests doing.
+  // An explicit `card_id` always wins for anyone who wants a stable,
+  // hand-picked key instead.
   _getSettingsKey() {
     if (this._config.card_id) {
       return `id:${this._config.card_id}`;
     }
 
-    return `cfg:${this._config.entity || ''}|${this._config.title || ''}|${this._config.station_name || ''}`;
+    return `auto:${this._autoInstanceKey || ''}`;
   }
 
   _getStationSettings(settingsKey) {
