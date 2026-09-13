@@ -119,7 +119,6 @@ class FartHaCard extends HTMLElement {
       entity: config.entity || '',
       title: config.title || 'FART',
       station_name: config.station_name || '',
-      limit: Number.isInteger(config.limit) ? config.limit : 10,
       compact_limit: Number.isInteger(config.compact_limit) ? config.compact_limit : 1,
       refresh_seconds: Number.isInteger(config.refresh_seconds) ? config.refresh_seconds : 15
     };
@@ -187,7 +186,8 @@ class FartHaCard extends HTMLElement {
     return {
       renames: (entry && entry.renames) || {},
       hidden: (entry && entry.hidden) || {},
-      hideTitle: !!(entry && entry.hideTitle)
+      hideTitle: !!(entry && entry.hideTitle),
+      compactLimit: (entry && entry.compactLimit) || null
     };
   }
 
@@ -219,7 +219,14 @@ class FartHaCard extends HTMLElement {
     const hideTitleInput = this.shadowRoot.querySelector('.settings-hide-title-input');
     const hideTitle = !!(hideTitleInput && hideTitleInput.checked);
 
-    this._settingsByStation = { ...this._settingsByStation, [settingsKey]: { renames, hidden, hideTitle } };
+    const compactLimitInput = this.shadowRoot.querySelector('.settings-compact-limit-input');
+    const parsedCompactLimit = compactLimitInput ? parseInt(compactLimitInput.value, 10) : NaN;
+    const compactLimit = Number.isFinite(parsedCompactLimit) && parsedCompactLimit > 0 ? parsedCompactLimit : null;
+
+    this._settingsByStation = {
+      ...this._settingsByStation,
+      [settingsKey]: { renames, hidden, hideTitle, compactLimit }
+    };
     this._settingsView = false;
     this.render();
 
@@ -316,7 +323,7 @@ class FartHaCard extends HTMLElement {
       return '<div class="empty-message">No platform data available.</div>';
     }
 
-    const compactLimit = Math.max(1, this._config.compact_limit || 1);
+    const compactLimit = Math.max(1, (data.settings && data.settings.compactLimit) || this._config.compact_limit || 1);
 
     return data.platforms
       .map((platformEntry) => {
@@ -369,13 +376,10 @@ class FartHaCard extends HTMLElement {
       return '<div class="expanded-empty">No departures available.</div>';
     }
 
-    const limit = Math.max(1, this._config.limit || 10);
-
     const columns = data.platforms
       .map((platformEntry) => {
         const departures = Array.isArray(platformEntry.departures) ? platformEntry.departures : [];
         const rows = departures
-          .slice(0, limit)
           .map((departure) => {
             const realTime = departure.realTime || departure.plannedTime;
             const delayMin = departure.realTime
@@ -422,7 +426,7 @@ class FartHaCard extends HTMLElement {
 
   buildSettingsPanel(data) {
     const rawPlatforms = data?.rawPlatforms || [];
-    const settings = data?.settings || { renames: {}, hidden: {}, hideTitle: false };
+    const settings = data?.settings || { renames: {}, hidden: {}, hideTitle: false, compactLimit: null };
 
     const titleRow = `
       <div class="settings-row settings-row-title">
@@ -431,6 +435,14 @@ class FartHaCard extends HTMLElement {
           <input type="checkbox" class="settings-hide-title-input" ${settings.hideTitle ? 'checked' : ''}>
           Hide
         </label>
+      </div>
+    `;
+
+    const compactLimitValue = settings.compactLimit || this._config.compact_limit || 1;
+    const compactLimitRow = `
+      <div class="settings-row settings-row-compact-limit">
+        <div class="settings-title-label">Departures per platform (small card)</div>
+        <input type="number" class="settings-compact-limit-input" min="1" max="20" value="${compactLimitValue}">
       </div>
     `;
 
@@ -463,6 +475,7 @@ class FartHaCard extends HTMLElement {
     return `
       <div class="settings-panel">
         ${titleRow}
+        ${compactLimitRow}
         ${platformRows}
         <div class="settings-actions">
           <button type="button" class="settings-save-button">Save</button>
@@ -689,6 +702,18 @@ class FartHaCard extends HTMLElement {
           background: var(--card-background-color, #ffffff);
           color: var(--primary-text-color, #1d1d1f);
           font-size: 0.85rem;
+        }
+
+        .settings-compact-limit-input {
+          flex: 0 0 64px;
+          width: 64px;
+          padding: 6px 8px;
+          border-radius: 8px;
+          border: 1px solid var(--divider-color, rgba(0,0,0,0.16));
+          background: var(--card-background-color, #ffffff);
+          color: var(--primary-text-color, #1d1d1f);
+          font-size: 0.85rem;
+          text-align: center;
         }
 
         .settings-hide-label {
