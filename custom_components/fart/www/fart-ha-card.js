@@ -147,24 +147,24 @@ class FartHaCard extends HTMLElement {
     }
   }
 
-  // Settings are keyed per dashboard/view URL rather than per entity, so two
-  // cards pointing at the same sensor - including two copies of the exact
-  // same YAML pasted onto different dashboards, which is what the setup
-  // notification suggests doing - don't silently share customization.
-  // This is computed fresh on every call (never cached on the instance):
-  // an earlier version cached a connection-order index once per element,
-  // which broke as soon as Home Assistant re-created the card without a
-  // full page reload (e.g. navigating away from and back to the view),
-  // since the counter it relied on kept incrementing instead of resetting.
-  // Two copies of the same card stacked on the *same* view still collide;
-  // set an explicit `card_id` in the config to tell them apart.
+  // Settings are keyed by (dashboard/view URL, entity) rather than just the
+  // entity, so two cards for the same station on different dashboards -
+  // including two copies of the exact same YAML, which is what the setup
+  // notification suggests pasting everywhere - don't share customization.
+  // Combining with the entity (rather than a connection-order index, which
+  // an earlier version used and which broke on any soft re-render that
+  // didn't reset it) also keeps multiple *different* stations' cards on the
+  // same view independent, without depending on anything but the card's own
+  // config and the live URL - both stable across normal navigation.
+  // Two cards for the *same* entity stacked on the *same* view still
+  // collide; set an explicit `card_id` in the config to tell them apart.
   _getSettingsKey() {
     if (this._config.card_id) {
       return `id:${this._config.card_id}`;
     }
 
     const pathname = (window.location && window.location.pathname) || '';
-    return `path:${pathname}`;
+    return `path:${pathname}|entity:${this._config.entity || ''}`;
   }
 
   _getStationSettings(settingsKey) {
