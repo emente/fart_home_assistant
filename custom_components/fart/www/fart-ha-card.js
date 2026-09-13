@@ -85,6 +85,50 @@ function getLineStyle(lineName, platformType) {
   return LINE_STYLES[name] || { background: SLATE_DARK, text: '#fff' };
 }
 
+// Tracks which fart-ha-card elements are currently connected to the DOM,
+// grouped by dashboard/view URL, in connection order. Used to tell apart
+// multiple cards that target the *same* entity on the *same* view - there
+// is no config difference between them at all, so position is the only
+// signal left. Entries are added on connect and actively removed on
+// disconnect (unlike an ever-incrementing counter, which was tried first
+// and broke: it kept counting up across soft navigation instead of
+// resetting, so a card reconnecting after leaving-and-returning to a view
+// got a different index than the one its settings were saved under). As
+// long as cards reconnect in the same relative order they were declared in
+// the dashboard YAML - true for a normal static layout - each one lands
+// back on the same index every time, on both a hard reload and in-app
+// navigation.
+const connectedInstancesByPath = new Map();
+
+function registerCardInstance(instance) {
+  const pathname = (window.location && window.location.pathname) || '';
+  let list = connectedInstancesByPath.get(pathname);
+  if (!list) {
+    list = [];
+    connectedInstancesByPath.set(pathname, list);
+  }
+
+  const entity = instance._config.entity || '';
+  let index = 0;
+  for (const existing of list) {
+    if ((existing._config.entity || '') === entity) {
+      index += 1;
+    }
+  }
+
+  list.push(instance);
+  return index;
+}
+
+function unregisterCardInstance(instance) {
+  for (const list of connectedInstancesByPath.values()) {
+    const idx = list.indexOf(instance);
+    if (idx !== -1) {
+      list.splice(idx, 1);
+    }
+  }
+}
+
 class FartHaCard extends HTMLElement {
   constructor() {
     super();
@@ -96,6 +140,7 @@ class FartHaCard extends HTMLElement {
     this._settingsByStation = {};
     this._settingsLoaded = false;
     this._settingsLoading = false;
+    this._instanceIndex = null;
   }
 
   setConfig(config) {
@@ -124,7 +169,15 @@ class FartHaCard extends HTMLElement {
   }
 
   connectedCallback() {
+    if (this._instanceIndex === null) {
+      this._instanceIndex = registerCardInstance(this);
+    }
     this.render();
+  }
+
+  disconnectedCallback() {
+    unregisterCardInstance(this);
+    this._instanceIndex = null;
   }
 
   async _loadSettings() {
@@ -147,24 +200,26 @@ class FartHaCard extends HTMLElement {
     }
   }
 
-  // Settings are keyed by (dashboard/view URL, entity) rather than just the
-  // entity, so two cards for the same station on different dashboards -
-  // including two copies of the exact same YAML, which is what the setup
-  // notification suggests pasting everywhere - don't share customization.
-  // Combining with the entity (rather than a connection-order index, which
-  // an earlier version used and which broke on any soft re-render that
-  // didn't reset it) also keeps multiple *different* stations' cards on the
-  // same view independent, without depending on anything but the card's own
-  // config and the live URL - both stable across normal navigation.
-  // Two cards for the *same* entity stacked on the *same* view still
-  // collide; set an explicit `card_id` in the config to tell them apart.
+  // Settings are keyed by (dashboard/view URL, entity, position). Checked
+  // against the actual stored dashboard config: two cards for the same
+  // station on the same view can be byte-for-byte identical JSON with no
+  // id field of any kind, so config content alone can never tell them
+  // apart - position among same-entity cards on the same view is the only
+  // remaining signal. That position comes from registerCardInstance/
+  // unregisterCardInstance, which track *currently connected* instances
+  // (added on connect, removed on disconnect) rather than an
+  // ever-incrementing counter - a counter that never decrements drifts
+  // upward every time a view is left and revisited without a full reload,
+  // which is what broke an earlier version of this. An explicit `card_id`
+  // in the config always overrides this and should be preferred once set.
   _getSettingsKey() {
     if (this._config.card_id) {
       return `id:${this._config.card_id}`;
     }
 
     const pathname = (window.location && window.location.pathname) || '';
-    return `path:${pathname}|entity:${this._config.entity || ''}`;
+    const entity = this._config.entity || '';
+    return `path:${pathname}|entity:${entity}|idx:${this._instanceIndex ?? 0}`;
   }
 
   _getStationSettings(settingsKey) {
