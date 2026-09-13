@@ -104,6 +104,7 @@ class FartHaCard extends HTMLElement {
       title: config.title || 'FART',
       station_name: config.station_name || '',
       limit: Number.isInteger(config.limit) ? config.limit : 10,
+      compact_limit: Number.isInteger(config.compact_limit) ? config.compact_limit : 1,
       refresh_seconds: Number.isInteger(config.refresh_seconds) ? config.refresh_seconds : 15
     };
     this.render();
@@ -113,6 +114,12 @@ class FartHaCard extends HTMLElement {
     this._hass = hass;
     if (!this._settingsLoaded && !this._settingsLoading) {
       this._loadSettings();
+    }
+    // Skip re-rendering while the settings form is open so a background
+    // state update (the sensor polls every ~15s) doesn't wipe out
+    // in-progress, unsaved edits in the form's inputs.
+    if (this._settingsView) {
+      return;
     }
     this.render();
   }
@@ -135,7 +142,9 @@ class FartHaCard extends HTMLElement {
     } finally {
       this._settingsLoaded = true;
       this._settingsLoading = false;
-      this.render();
+      if (!this._settingsView) {
+        this.render();
+      }
     }
   }
 
@@ -269,12 +278,14 @@ class FartHaCard extends HTMLElement {
       return '<div class="empty-message">No platform data available.</div>';
     }
 
+    const compactLimit = Math.max(1, this._config.compact_limit || 1);
+
     return data.platforms
       .map((platformEntry) => {
         const departures = Array.isArray(platformEntry.departures) ? platformEntry.departures : [];
-        const nextDeparture = departures[0];
+        const visibleDepartures = departures.slice(0, compactLimit);
 
-        if (!nextDeparture) {
+        if (visibleDepartures.length === 0) {
           return `
             <div class="platform-row empty">
               <div class="platform-name">${this.formatPlatformLabel(platformEntry.platform)}</div>
@@ -283,30 +294,34 @@ class FartHaCard extends HTMLElement {
           `;
         }
 
-        const realTime = nextDeparture.realTime || nextDeparture.plannedTime;
-        const delayMin = nextDeparture.realTime
-          ? Math.max(
-              0,
-              Math.round(
-                (new Date(nextDeparture.realTime).getTime() - new Date(nextDeparture.plannedTime).getTime()) / 60000
-              )
-            )
-          : 0;
+        return visibleDepartures
+          .map((departure, index) => {
+            const realTime = departure.realTime || departure.plannedTime;
+            const delayMin = departure.realTime
+              ? Math.max(
+                  0,
+                  Math.round(
+                    (new Date(departure.realTime).getTime() - new Date(departure.plannedTime).getTime()) / 60000
+                  )
+                )
+              : 0;
 
-        const lineStyle = getLineStyle(nextDeparture.lineName, platformEntry.platform.type);
+            const lineStyle = getLineStyle(departure.lineName, platformEntry.platform.type);
 
-        return `
-          <div class="platform-row">
-            <div class="platform-name">${this.formatPlatformLabel(platformEntry.platform)}</div>
-            <div class="platform-content">
-              <div class="line-and-time">
-                <span class="line-badge" style="background:${lineStyle.background}; color:${lineStyle.text};">${nextDeparture.lineName || '—'}</span>
-                <span class="time">${this.formatTime(realTime)}</span>
+            return `
+              <div class="platform-row">
+                <div class="platform-name">${index === 0 ? this.formatPlatformLabel(platformEntry.platform) : ''}</div>
+                <div class="platform-content">
+                  <div class="line-and-time">
+                    <span class="line-badge" style="background:${lineStyle.background}; color:${lineStyle.text};">${departure.lineName || '—'}</span>
+                    <span class="time">${this.formatTime(realTime)}</span>
+                  </div>
+                  <div class="meta">${delayMin > 0 ? `+${delayMin} min` : 'on time'}</div>
+                </div>
               </div>
-              <div class="meta">${delayMin > 0 ? `+${delayMin} min` : 'on time'}</div>
-            </div>
-          </div>
-        `;
+            `;
+          })
+          .join('');
       })
       .join('');
   }
