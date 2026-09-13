@@ -45,6 +45,20 @@ const LINE_STYLES = {
   10: { background: '#a4d7bb', text: SLATE_DARK }
 };
 
+function platformKey(platform) {
+  return `${platform?.type || 'unknown'}:${platform?.name || 'unknown'}`;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  }[ch]));
+}
+
 function getLineStyle(lineName, platformType) {
   const name = String(lineName || '');
 
@@ -78,6 +92,10 @@ class FartHaCard extends HTMLElement {
     this._config = {};
     this._hass = null;
     this._expanded = false;
+    this._settingsView = false;
+    this._settingsByStation = {};
+    this._settingsLoaded = false;
+    this._settingsLoading = false;
   }
 
   setConfig(config) {
@@ -93,11 +111,76 @@ class FartHaCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    if (!this._settingsLoaded && !this._settingsLoading) {
+      this._loadSettings();
+    }
     this.render();
   }
 
   connectedCallback() {
     this.render();
+  }
+
+  async _loadSettings() {
+    if (!this._hass || typeof this._hass.callWS !== 'function') {
+      return;
+    }
+
+    this._settingsLoading = true;
+    try {
+      const result = await this._hass.callWS({ type: 'frontend/get_user_data', key: 'fart_card_settings' });
+      this._settingsByStation = (result && result.value) || {};
+    } catch (err) {
+      console.error('FART: failed to load card settings', err);
+    } finally {
+      this._settingsLoaded = true;
+      this._settingsLoading = false;
+      this.render();
+    }
+  }
+
+  _getStationSettings(stationId) {
+    const entry = this._settingsByStation[stationId];
+    return {
+      renames: (entry && entry.renames) || {},
+      hidden: (entry && entry.hidden) || {}
+    };
+  }
+
+  _saveSettingsFromForm(stationId) {
+    if (!stationId) {
+      return;
+    }
+
+    const renames = {};
+    const hidden = {};
+
+    this.shadowRoot.querySelectorAll('.settings-row').forEach((row) => {
+      const key = row.getAttribute('data-key');
+      if (!key) {
+        return;
+      }
+
+      const nameInput = row.querySelector('.settings-name-input');
+      const hideInput = row.querySelector('.settings-hide-input');
+      const name = nameInput ? nameInput.value.trim() : '';
+      if (name) {
+        renames[key] = name;
+      }
+      if (hideInput && hideInput.checked) {
+        hidden[key] = true;
+      }
+    });
+
+    this._settingsByStation = { ...this._settingsByStation, [stationId]: { renames, hidden } };
+    this._settingsView = false;
+    this.render();
+
+    if (this._hass && typeof this._hass.callWS === 'function') {
+      this._hass
+        .callWS({ type: 'frontend/set_user_data', key: 'fart_card_settings', value: this._settingsByStation })
+        .catch((err) => console.error('FART: failed to save card settings', err));
+    }
   }
 
   getEntityState() {
@@ -115,12 +198,27 @@ class FartHaCard extends HTMLElement {
     }
 
     const attributes = state.attributes || {};
-    const platforms = Array.isArray(attributes.platforms) ? attributes.platforms : [];
+    const stationId = attributes.station_id || this._config.entity;
+    const rawPlatforms = (Array.isArray(attributes.platforms) ? attributes.platforms : []).map((entry) => ({
+      ...entry,
+      platform: { ...entry.platform, key: platformKey(entry.platform) }
+    }));
+
+    const settings = this._getStationSettings(stationId);
+    const platforms = rawPlatforms
+      .filter((entry) => !settings.hidden[entry.platform.key])
+      .map((entry) => {
+        const rename = settings.renames[entry.platform.key];
+        return rename ? { ...entry, platform: { ...entry.platform, displayLabel: rename } } : entry;
+      });
 
     return {
+      stationId,
       stationName: attributes.station_name || attributes.stationName || state.name || 'FART',
       cityName: attributes.city_name || attributes.cityName || '',
       platforms,
+      rawPlatforms,
+      settings,
       fetchedAt: attributes.fetched_at || attributes.fetchedAt || state.last_updated,
       unavailable: state.state === 'unavailable'
     };
@@ -143,7 +241,15 @@ class FartHaCard extends HTMLElement {
   }
 
   formatPlatformLabel(platform) {
-    if (!platform || !platform.name) {
+    if (!platform) {
+      return 'Platform';
+    }
+
+    if (platform.displayLabel) {
+      return platform.displayLabel;
+    }
+
+    if (!platform.name) {
       return 'Platform';
     }
 
@@ -261,12 +367,54 @@ class FartHaCard extends HTMLElement {
     return `<div class="expanded-grid">${columns}</div>`;
   }
 
+  buildSettingsPanel(data) {
+    const rawPlatforms = data?.rawPlatforms || [];
+    if (rawPlatforms.length === 0) {
+      return '<div class="expanded-empty">No platform data available yet.</div>';
+    }
+
+    const settings = data.settings || { renames: {}, hidden: {} };
+
+    const rows = rawPlatforms
+      .map((entry) => {
+        const key = entry.platform.key;
+        const defaultLabel = this.formatPlatformLabel({ ...entry.platform, displayLabel: null });
+        const currentName = settings.renames[key] || '';
+        const isHidden = !!settings.hidden[key];
+
+        return `
+          <div class="settings-row" data-key="${escapeHtml(key)}">
+            <input
+              type="text"
+              class="settings-name-input"
+              placeholder="${escapeHtml(defaultLabel)}"
+              value="${escapeHtml(currentName)}"
+            >
+            <label class="settings-hide-label">
+              <input type="checkbox" class="settings-hide-input" ${isHidden ? 'checked' : ''}>
+              Hide
+            </label>
+          </div>
+        `;
+      })
+      .join('');
+
+    return `
+      <div class="settings-panel">
+        ${rows}
+        <div class="settings-actions">
+          <button type="button" class="settings-save-button">Save</button>
+        </div>
+      </div>
+    `;
+  }
+
   render() {
     const data = this.getData();
     const title = this._config.title || this._config.station_name || data?.stationName || 'Departures';
     const subtitle = this._config.station_name || data?.stationName || 'Unknown stop';
     const rows = this.buildCompactRows(data);
-    const expandedRows = this.buildExpandedRows(data);
+    const expandedRows = this._settingsView ? this.buildSettingsPanel(data) : this.buildExpandedRows(data);
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -315,12 +463,6 @@ class FartHaCard extends HTMLElement {
           line-height: 1.2;
         }
 
-        .status {
-          font-size: 0.75rem;
-          color: var(--secondary-text-color, #6b7280);
-          white-space: nowrap;
-        }
-
         .body {
           display: flex;
           flex-direction: column;
@@ -340,10 +482,14 @@ class FartHaCard extends HTMLElement {
 
         .platform-name {
           flex: 0 0 auto;
+          width: 76px;
           font-size: 0.78rem;
           font-weight: 700;
           text-transform: uppercase;
           color: var(--secondary-text-color, #6b7280);
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
 
         .platform-content {
@@ -365,19 +511,22 @@ class FartHaCard extends HTMLElement {
 
         .line-badge {
           display: inline-flex;
+          flex: 0 0 auto;
           align-items: center;
           justify-content: center;
-          min-width: 24px;
+          width: 34px;
           height: 20px;
-          padding: 0 6px;
+          padding: 0 4px;
           border-radius: 5px;
-          font-size: 0.78rem;
+          font-size: 0.72rem;
           font-weight: 800;
           line-height: 1;
           box-shadow: inset 0 0 0 1px rgba(255,255,255,0.15);
         }
 
         .time {
+          flex: 0 0 auto;
+          min-width: 62px;
           font-size: 0.85rem;
           font-weight: 700;
           color: var(--primary-color, #0f766e);
@@ -437,7 +586,14 @@ class FartHaCard extends HTMLElement {
           font-size: 1.1rem;
         }
 
-        .close-button {
+        .modal-header-actions {
+          display: flex;
+          align-items: center;
+          gap: 2px;
+          flex: 0 0 auto;
+        }
+
+        .icon-button {
           flex: 0 0 auto;
           display: inline-flex;
           align-items: center;
@@ -452,13 +608,64 @@ class FartHaCard extends HTMLElement {
           transition: background-color 0.15s ease-in-out;
         }
 
-        .close-button:hover,
-        .close-button:focus-visible {
+        .icon-button:hover,
+        .icon-button:focus-visible {
           background: rgba(128, 128, 128, 0.16);
         }
 
-        .close-button svg {
+        .icon-button svg {
           display: block;
+        }
+
+        .settings-panel {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+
+        .settings-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 6px 0;
+          border-bottom: 1px solid var(--divider-color, rgba(0,0,0,0.06));
+        }
+
+        .settings-name-input {
+          flex: 1 1 auto;
+          min-width: 0;
+          padding: 6px 8px;
+          border-radius: 8px;
+          border: 1px solid var(--divider-color, rgba(0,0,0,0.16));
+          background: var(--card-background-color, #ffffff);
+          color: var(--primary-text-color, #1d1d1f);
+          font-size: 0.85rem;
+        }
+
+        .settings-hide-label {
+          flex: 0 0 auto;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 0.8rem;
+          color: var(--secondary-text-color, #6b7280);
+        }
+
+        .settings-actions {
+          display: flex;
+          justify-content: flex-end;
+          padding-top: 4px;
+        }
+
+        .settings-save-button {
+          border: none;
+          border-radius: 8px;
+          padding: 8px 16px;
+          background: var(--primary-color, #0f766e);
+          color: var(--text-primary-color, #fff);
+          font-size: 0.85rem;
+          font-weight: 700;
+          cursor: pointer;
         }
 
         .expanded-grid {
@@ -571,7 +778,6 @@ class FartHaCard extends HTMLElement {
             <div class="eyebrow">FART</div>
             <h2>${title}</h2>
           </div>
-          <div class="status">${subtitle}</div>
         </div>
 
         <div class="body">
@@ -587,11 +793,18 @@ class FartHaCard extends HTMLElement {
         <div class="modal" role="dialog" aria-modal="true">
           <div class="modal-header">
             <h3>${title} • ${subtitle}</h3>
-            <button class="close-button" type="button" aria-label="Close">
-              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-                <path fill="currentColor" d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"></path>
-              </svg>
-            </button>
+            <div class="modal-header-actions">
+              <button class="icon-button settings-toggle-button" type="button" aria-label="Platform settings">
+                <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                  <path fill="currentColor" d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.22,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.22,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.68 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z"></path>
+                </svg>
+              </button>
+              <button class="icon-button close-button" type="button" aria-label="Close">
+                <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                  <path fill="currentColor" d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"></path>
+                </svg>
+              </button>
+            </div>
           </div>
           <div>${expandedRows}</div>
         </div>
@@ -601,14 +814,14 @@ class FartHaCard extends HTMLElement {
     const card = this.shadowRoot.querySelector('.card');
     if (card) {
       card.onclick = () => {
-        if (data && Array.isArray(data.platforms) && data.platforms.length > 0) {
+        if (data && Array.isArray(data.rawPlatforms) && data.rawPlatforms.length > 0) {
           this._expanded = true;
           this.render();
         }
       };
 
       card.onkeydown = (event) => {
-        if ((event.key === 'Enter' || event.key === ' ') && data && Array.isArray(data.platforms) && data.platforms.length > 0) {
+        if ((event.key === 'Enter' || event.key === ' ') && data && Array.isArray(data.rawPlatforms) && data.rawPlatforms.length > 0) {
           event.preventDefault();
           this._expanded = true;
           this.render();
@@ -621,7 +834,25 @@ class FartHaCard extends HTMLElement {
       closeButton.onclick = (event) => {
         event.stopPropagation();
         this._expanded = false;
+        this._settingsView = false;
         this.render();
+      };
+    }
+
+    const settingsToggle = this.shadowRoot.querySelector('.settings-toggle-button');
+    if (settingsToggle) {
+      settingsToggle.onclick = (event) => {
+        event.stopPropagation();
+        this._settingsView = !this._settingsView;
+        this.render();
+      };
+    }
+
+    const settingsSave = this.shadowRoot.querySelector('.settings-save-button');
+    if (settingsSave) {
+      settingsSave.onclick = (event) => {
+        event.stopPropagation();
+        this._saveSettingsFromForm(data?.stationId);
       };
     }
 
@@ -630,6 +861,7 @@ class FartHaCard extends HTMLElement {
       backdrop.onclick = (event) => {
         if (event.target === backdrop) {
           this._expanded = false;
+          this._settingsView = false;
           this.render();
         }
       };
