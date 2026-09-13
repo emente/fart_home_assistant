@@ -1,6 +1,9 @@
 This is a custom component including card to display
 Karlsruhe KVV depature times. Inspired by https://github.com/demartinomarco/F.A.R.T. hence the name.
 
+![Screenshot](screenshot.png)
+
+
 ## HACS install flow
 
 1. In HACS, add this repository as a custom repository (category: Integration).
