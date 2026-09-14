@@ -729,7 +729,7 @@ class FartHaCard extends HTMLElement {
         }
 
         .singleline-chip-time {
-          font-size: 0.78rem;
+          font-size: 0.85rem;
           font-weight: 700;
           color: var(--primary-color, #0f766e);
         }
@@ -761,11 +761,11 @@ class FartHaCard extends HTMLElement {
           flex: 0 0 auto;
           align-items: center;
           justify-content: center;
-          width: 34px;
-          height: 20px;
-          padding: 0 4px;
-          border-radius: 5px;
-          font-size: 0.72rem;
+          width: 40px;
+          height: 24px;
+          padding: 0 5px;
+          border-radius: 6px;
+          font-size: 0.85rem;
           font-weight: 800;
           line-height: 1;
           box-shadow: inset 0 0 0 1px rgba(255,255,255,0.15);
