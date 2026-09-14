@@ -671,7 +671,6 @@ class FartHaCard extends HTMLElement {
 
         h2 {
           margin: 0;
-          font-size: 1rem;
           font-weight: 700;
           line-height: 1.2;
         }
@@ -696,7 +695,6 @@ class FartHaCard extends HTMLElement {
         .platform-name {
           flex: 0 0 auto;
           width: 76px;
-          font-size: 0.85rem;
           font-weight: 400;
           color: var(--primary-text-color, #1d1d1f);
           overflow: hidden;
@@ -728,13 +726,11 @@ class FartHaCard extends HTMLElement {
         }
 
         .singleline-chip-time {
-          font-size: 0.85rem;
           font-weight: 400;
           color: var(--primary-color, #0f766e);
         }
 
         .singleline-empty {
-          font-size: 0.82rem;
           color: var(--secondary-text-color, #6b7280);
         }
 
@@ -764,7 +760,6 @@ class FartHaCard extends HTMLElement {
           height: 24px;
           padding: 0 5px;
           border-radius: 6px;
-          font-size: 0.85rem;
           font-weight: 400;
           line-height: 1;
           box-shadow: inset 0 0 0 1px rgba(255,255,255,0.15);
@@ -773,20 +768,17 @@ class FartHaCard extends HTMLElement {
         .time {
           flex: 0 0 auto;
           min-width: 62px;
-          font-size: 0.85rem;
           font-weight: 400;
           color: var(--primary-color, #0f766e);
         }
 
         .meta {
           flex: 0 0 auto;
-          font-size: 0.68rem;
           color: var(--secondary-text-color, #6b7280);
         }
 
         .loader, .error, .empty-message {
           padding: 12px 0;
-          font-size: 0.85rem;
           color: var(--secondary-text-color, #6b7280);
         }
 
@@ -829,7 +821,6 @@ class FartHaCard extends HTMLElement {
 
         .modal-header h3 {
           margin: 0;
-          font-size: 1.1rem;
         }
 
         .modal-header-actions {
@@ -884,7 +875,6 @@ class FartHaCard extends HTMLElement {
           border: 1px solid var(--divider-color, rgba(0,0,0,0.16));
           background: var(--card-background-color, #ffffff);
           color: var(--primary-text-color, #1d1d1f);
-          font-size: 0.85rem;
         }
 
         .settings-compact-limit-input {
@@ -895,7 +885,6 @@ class FartHaCard extends HTMLElement {
           border: 1px solid var(--divider-color, rgba(0,0,0,0.16));
           background: var(--card-background-color, #ffffff);
           color: var(--primary-text-color, #1d1d1f);
-          font-size: 0.85rem;
           text-align: center;
         }
 
@@ -904,13 +893,11 @@ class FartHaCard extends HTMLElement {
           display: flex;
           align-items: center;
           gap: 4px;
-          font-size: 0.8rem;
           color: var(--secondary-text-color, #6b7280);
         }
 
         .settings-title-label {
           flex: 1 1 auto;
-          font-size: 0.85rem;
           font-weight: 700;
         }
 
@@ -926,7 +913,6 @@ class FartHaCard extends HTMLElement {
           padding: 8px 16px;
           background: var(--primary-color, #0f766e);
           color: var(--text-primary-color, #fff);
-          font-size: 0.85rem;
           font-weight: 700;
           cursor: pointer;
         }
@@ -946,7 +932,6 @@ class FartHaCard extends HTMLElement {
         }
 
         .expanded-header {
-          font-size: 0.78rem;
           font-weight: 700;
           text-transform: uppercase;
           letter-spacing: 0.06em;
@@ -988,13 +973,11 @@ class FartHaCard extends HTMLElement {
           align-items: center;
           justify-content: center;
           border-radius: 6px;
-          font-size: 0.85rem;
           font-weight: 400;
           box-shadow: inset 0 0 0 1px rgba(255,255,255,0.15);
         }
 
         .expanded-direction {
-          font-size: 0.8rem;
           color: var(--secondary-text-color, #6b7280);
           overflow: hidden;
           text-overflow: ellipsis;
@@ -1005,7 +988,6 @@ class FartHaCard extends HTMLElement {
           display: flex;
           flex-direction: column;
           align-items: flex-end;
-          font-size: 0.8rem;
           min-width: 78px;
         }
 
@@ -1019,7 +1001,6 @@ class FartHaCard extends HTMLElement {
         }
 
         .expanded-empty {
-          font-size: 0.8rem;
           color: var(--secondary-text-color, #6b7280);
         }
 
