@@ -560,14 +560,10 @@ class FartHaCard extends HTMLElement {
     const compactLimitValue = settings.compactLimit || this._config.compact_limit || 1;
     const compactLimitRow = `
       <div class="settings-row settings-row-compact-limit">
-        <ha-textfield
-          class="settings-compact-limit-input"
-          label="Abfahrten pro Gleis (kleine Karte)"
-          type="number"
-          min="1"
-          max="20"
-          value="${compactLimitValue}"
-        ></ha-textfield>
+        <label class="settings-field-label">
+          Abfahrten pro Gleis (kleine Karte)
+          <input type="number" class="settings-compact-limit-input" min="1" max="20" value="${compactLimitValue}">
+        </label>
       </div>
     `;
 
@@ -606,12 +602,12 @@ class FartHaCard extends HTMLElement {
 
             return `
               <div class="settings-row" data-key="${escapeHtml(key)}">
-                <ha-textfield
+                <input
+                  type="text"
                   class="settings-name-input"
-                  label="Gleisname"
                   placeholder="${escapeHtml(defaultLabel)}"
                   value="${escapeHtml(currentName)}"
-                ></ha-textfield>
+                >
                 <ha-formfield label="Anzeigen" align-end>
                   <ha-switch class="settings-show-input" ${isHidden ? '' : 'checked'}></ha-switch>
                 </ha-formfield>
@@ -629,7 +625,7 @@ class FartHaCard extends HTMLElement {
         ${singleLineRow}
         ${platformRows}
         <div class="settings-actions">
-          <mwc-button raised class="settings-save-button">Speichern</mwc-button>
+          <button type="button" class="settings-save-button">Speichern</button>
         </div>
       </div>
     `;
@@ -871,9 +867,32 @@ class FartHaCard extends HTMLElement {
           width: 100%;
         }
 
+        .settings-name-input,
+        .settings-compact-limit-input {
+          padding: 8px 10px;
+          border-radius: 4px;
+          border: 1px solid var(--divider-color, rgba(0,0,0,0.24));
+          background: var(--card-background-color, #ffffff);
+          color: var(--primary-text-color, #1d1d1f);
+        }
+
+        .settings-name-input:focus,
+        .settings-compact-limit-input:focus {
+          outline: none;
+          border-color: var(--primary-color, #03a9f4);
+        }
+
         .settings-name-input {
           flex: 1 1 auto;
           min-width: 0;
+        }
+
+        .settings-field-label {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          width: 100%;
+          color: var(--secondary-text-color, #6b7280);
         }
 
         .settings-compact-limit-input {
@@ -884,6 +903,20 @@ class FartHaCard extends HTMLElement {
           display: flex;
           justify-content: flex-end;
           padding-top: 8px;
+        }
+
+        .settings-save-button {
+          border: none;
+          border-radius: 4px;
+          padding: 10px 20px;
+          background: var(--primary-color, #03a9f4);
+          color: var(--text-primary-color, #fff);
+          font-weight: 500;
+          font-size: inherit;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          cursor: pointer;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.2);
         }
 
         .expanded-grid {
