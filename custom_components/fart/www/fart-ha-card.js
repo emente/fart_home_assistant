@@ -982,14 +982,14 @@ class FartHaCard extends HTMLElement {
         }
 
         .expanded-line-badge {
-          width: 34px;
+          width: 40px;
           height: 24px;
           display: inline-flex;
           align-items: center;
           justify-content: center;
           border-radius: 6px;
-          font-size: 0.75rem;
-          font-weight: 800;
+          font-size: 0.85rem;
+          font-weight: 400;
           box-shadow: inset 0 0 0 1px rgba(255,255,255,0.15);
         }
 
@@ -1010,7 +1010,7 @@ class FartHaCard extends HTMLElement {
         }
 
         .expanded-time {
-          font-weight: 700;
+          font-weight: 400;
           color: var(--primary-color, #0f766e);
         }
 
