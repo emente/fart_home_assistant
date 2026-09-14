@@ -551,9 +551,8 @@ class FartHaCard extends HTMLElement {
 
     const titleRow = `
       <div class="settings-row settings-row-toggle">
-        <ha-formfield label="Kartentitel anzeigen" align-end>
-          <ha-switch class="settings-show-title-input" ${settings.hideTitle ? '' : 'checked'}></ha-switch>
-        </ha-formfield>
+        <span class="settings-toggle-label">Kartentitel anzeigen</span>
+        <ha-switch class="settings-show-title-input" ${settings.hideTitle ? '' : 'checked'}></ha-switch>
       </div>
     `;
 
@@ -569,25 +568,22 @@ class FartHaCard extends HTMLElement {
 
     const countdownRow = `
       <div class="settings-row settings-row-toggle">
-        <ha-formfield label="Countdown statt Uhrzeit anzeigen" align-end>
-          <ha-switch class="settings-show-countdown-input" ${settings.showCountdown ? 'checked' : ''}></ha-switch>
-        </ha-formfield>
+        <span class="settings-toggle-label">Countdown statt Uhrzeit anzeigen</span>
+        <ha-switch class="settings-show-countdown-input" ${settings.showCountdown ? 'checked' : ''}></ha-switch>
       </div>
     `;
 
     const showDelayRow = `
       <div class="settings-row settings-row-toggle">
-        <ha-formfield label="Verspätung anzeigen" align-end>
-          <ha-switch class="settings-show-delay-input" ${settings.hideDelay ? '' : 'checked'}></ha-switch>
-        </ha-formfield>
+        <span class="settings-toggle-label">Verspätung anzeigen</span>
+        <ha-switch class="settings-show-delay-input" ${settings.hideDelay ? '' : 'checked'}></ha-switch>
       </div>
     `;
 
     const singleLineRow = `
       <div class="settings-row settings-row-toggle">
-        <ha-formfield label="Kleine Karte: eine Zeile pro Gleis" align-end>
-          <ha-switch class="settings-single-line-input" ${settings.singleLine ? 'checked' : ''}></ha-switch>
-        </ha-formfield>
+        <span class="settings-toggle-label">Kleine Karte: eine Zeile pro Gleis</span>
+        <ha-switch class="settings-single-line-input" ${settings.singleLine ? 'checked' : ''}></ha-switch>
       </div>
     `;
 
@@ -608,9 +604,8 @@ class FartHaCard extends HTMLElement {
                   placeholder="${escapeHtml(defaultLabel)}"
                   value="${escapeHtml(currentName)}"
                 >
-                <ha-formfield label="Anzeigen" align-end>
-                  <ha-switch class="settings-show-input" ${isHidden ? '' : 'checked'}></ha-switch>
-                </ha-formfield>
+                <span class="settings-toggle-label">Anzeigen</span>
+                <ha-switch class="settings-show-input" ${isHidden ? '' : 'checked'}></ha-switch>
               </div>
             `;
           })
@@ -863,8 +858,12 @@ class FartHaCard extends HTMLElement {
           padding: 4px 0;
         }
 
-        .settings-row-toggle ha-formfield {
-          width: 100%;
+        .settings-row-toggle {
+          justify-content: space-between;
+        }
+
+        .settings-toggle-label {
+          color: var(--primary-text-color, #1d1d1f);
         }
 
         .settings-name-input,
