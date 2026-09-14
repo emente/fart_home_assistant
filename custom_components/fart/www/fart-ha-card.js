@@ -360,10 +360,10 @@ class FartHaCard extends HTMLElement {
 
     const diffMinutes = Math.round((date.getTime() - Date.now()) / 60000);
     if (diffMinutes <= 0) {
-      return 'due';
+      return 'jetzt';
     }
 
-    return `${diffMinutes} min`;
+    return `${diffMinutes} Min.`;
   }
 
   formatDisplayTime(dateString, settings) {
@@ -372,7 +372,7 @@ class FartHaCard extends HTMLElement {
 
   formatPlatformLabel(platform) {
     if (!platform) {
-      return 'Platform';
+      return 'Gleis';
     }
 
     if (platform.displayLabel) {
@@ -380,7 +380,7 @@ class FartHaCard extends HTMLElement {
     }
 
     if (!platform.name) {
-      return 'Platform';
+      return 'Gleis';
     }
 
     if (platform.type === 'rail') {
@@ -396,7 +396,7 @@ class FartHaCard extends HTMLElement {
 
   buildCompactRows(data) {
     if (!data || !Array.isArray(data.platforms) || data.platforms.length === 0) {
-      return '<div class="empty-message">No platform data available.</div>';
+      return '<div class="empty-message">Keine Gleisdaten verfügbar.</div>';
     }
 
     const settings = data.settings || {};
@@ -409,13 +409,19 @@ class FartHaCard extends HTMLElement {
           const visibleDepartures = departures.slice(0, compactLimit);
 
           const summary = visibleDepartures.length === 0
-            ? 'No departures'
+            ? '<span class="singleline-empty">Keine Abfahrten</span>'
             : visibleDepartures
                 .map((departure) => {
                   const realTime = departure.realTime || departure.plannedTime;
-                  return `(${departure.lineName || '—'}) ${this.formatDisplayTime(realTime, settings)}`;
+                  const lineStyle = getLineStyle(departure.lineName, platformEntry.platform.type);
+                  return `
+                    <span class="singleline-chip">
+                      <span class="line-badge" style="background:${lineStyle.background}; color:${lineStyle.text};">${departure.lineName || '—'}</span>
+                      <span class="singleline-chip-time">${this.formatDisplayTime(realTime, settings)}</span>
+                    </span>
+                  `;
                 })
-                .join(' ');
+                .join('');
 
           return `
             <div class="platform-row platform-row-singleline">
@@ -436,7 +442,7 @@ class FartHaCard extends HTMLElement {
           return `
             <div class="platform-row empty">
               <div class="platform-name">${this.formatPlatformLabel(platformEntry.platform)}</div>
-              <div class="platform-meta">No departures</div>
+              <div class="platform-meta">Keine Abfahrten</div>
             </div>
           `;
         }
@@ -463,7 +469,7 @@ class FartHaCard extends HTMLElement {
                     <span class="line-badge" style="background:${lineStyle.background}; color:${lineStyle.text};">${departure.lineName || '—'}</span>
                     <span class="time">${this.formatDisplayTime(realTime, settings)}</span>
                   </div>
-                  ${settings.hideDelay ? '' : `<div class="meta">${delayMin > 0 ? `+${delayMin} min` : 'on time'}</div>`}
+                  ${settings.hideDelay ? '' : `<div class="meta">${delayMin > 0 ? `+${delayMin} Min.` : 'pünktlich'}</div>`}
                 </div>
               </div>
             `;
@@ -475,7 +481,7 @@ class FartHaCard extends HTMLElement {
 
   buildExpandedRows(data) {
     if (!data || !Array.isArray(data.platforms) || data.platforms.length === 0) {
-      return '<div class="expanded-empty">No departures available.</div>';
+      return '<div class="expanded-empty">Keine Abfahrten verfügbar.</div>';
     }
 
     const settings = data.settings || {};
@@ -509,7 +515,7 @@ class FartHaCard extends HTMLElement {
                 </div>
                 <div class="expanded-meta">
                   <span class="expanded-time">${this.formatDisplayTime(realTime, settings)}</span>
-                  ${settings.hideDelay ? '' : `<span class="expanded-delay">${delayMin > 0 ? `+${delayMin} min` : 'on time'}</span>`}
+                  ${settings.hideDelay ? '' : `<span class="expanded-delay">${delayMin > 0 ? `+${delayMin} Min.` : 'pünktlich'}</span>`}
                 </div>
               </div>
             `;
@@ -519,7 +525,7 @@ class FartHaCard extends HTMLElement {
         return `
           <div class="expanded-platform">
             <div class="expanded-header">${this.formatPlatformLabel(platformEntry.platform)}</div>
-            <div class="expanded-list">${rows || '<div class="expanded-empty">No departures</div>'}</div>
+            <div class="expanded-list">${rows || '<div class="expanded-empty">Keine Abfahrten</div>'}</div>
           </div>
         `;
       })
@@ -542,10 +548,10 @@ class FartHaCard extends HTMLElement {
 
     const titleRow = `
       <div class="settings-row settings-row-title">
-        <div class="settings-title-label">Card title</div>
+        <div class="settings-title-label">Kartentitel</div>
         <label class="settings-hide-label">
           <input type="checkbox" class="settings-hide-title-input" ${settings.hideTitle ? 'checked' : ''}>
-          Hide
+          Ausblenden
         </label>
       </div>
     `;
@@ -553,43 +559,43 @@ class FartHaCard extends HTMLElement {
     const compactLimitValue = settings.compactLimit || this._config.compact_limit || 1;
     const compactLimitRow = `
       <div class="settings-row settings-row-compact-limit">
-        <div class="settings-title-label">Departures per platform (small card)</div>
+        <div class="settings-title-label">Abfahrten pro Gleis (kleine Karte)</div>
         <input type="number" class="settings-compact-limit-input" min="1" max="20" value="${compactLimitValue}">
       </div>
     `;
 
     const countdownRow = `
       <div class="settings-row settings-row-toggle">
-        <div class="settings-title-label">Show countdown instead of time</div>
+        <div class="settings-title-label">Countdown statt Uhrzeit anzeigen</div>
         <label class="settings-hide-label">
           <input type="checkbox" class="settings-show-countdown-input" ${settings.showCountdown ? 'checked' : ''}>
-          Enable
+          Aktivieren
         </label>
       </div>
     `;
 
     const hideDelayRow = `
       <div class="settings-row settings-row-toggle">
-        <div class="settings-title-label">Hide delay / on-time indicator</div>
+        <div class="settings-title-label">Verspätungsanzeige ausblenden</div>
         <label class="settings-hide-label">
           <input type="checkbox" class="settings-hide-delay-input" ${settings.hideDelay ? 'checked' : ''}>
-          Hide
+          Ausblenden
         </label>
       </div>
     `;
 
     const singleLineRow = `
       <div class="settings-row settings-row-toggle">
-        <div class="settings-title-label">Small card: single line per platform</div>
+        <div class="settings-title-label">Kleine Karte: eine Zeile pro Gleis</div>
         <label class="settings-hide-label">
           <input type="checkbox" class="settings-single-line-input" ${settings.singleLine ? 'checked' : ''}>
-          Enable
+          Aktivieren
         </label>
       </div>
     `;
 
     const platformRows = rawPlatforms.length === 0
-      ? '<div class="expanded-empty">No platform data available yet.</div>'
+      ? '<div class="expanded-empty">Noch keine Gleisdaten verfügbar.</div>'
       : rawPlatforms
           .map((entry) => {
             const key = entry.platform.key;
@@ -607,7 +613,7 @@ class FartHaCard extends HTMLElement {
                 >
                 <label class="settings-hide-label">
                   <input type="checkbox" class="settings-hide-input" ${isHidden ? 'checked' : ''}>
-                  Hide
+                  Ausblenden
                 </label>
               </div>
             `;
@@ -623,7 +629,7 @@ class FartHaCard extends HTMLElement {
         ${singleLineRow}
         ${platformRows}
         <div class="settings-actions">
-          <button type="button" class="settings-save-button">Save</button>
+          <button type="button" class="settings-save-button">Speichern</button>
         </div>
       </div>
     `;
@@ -631,8 +637,8 @@ class FartHaCard extends HTMLElement {
 
   render() {
     const data = this.getData();
-    const title = this._config.title || this._config.station_name || data?.stationName || 'Departures';
-    const subtitle = this._config.station_name || data?.stationName || 'Unknown stop';
+    const title = this._config.title || this._config.station_name || data?.stationName || 'Abfahrten';
+    const subtitle = this._config.station_name || data?.stationName || 'Unbekannte Haltestelle';
     const rows = this.buildCompactRows(data);
     const expandedRows = this._settingsView ? this.buildSettingsPanel(data) : this.buildExpandedRows(data);
 
@@ -701,17 +707,36 @@ class FartHaCard extends HTMLElement {
 
         .platform-row-singleline .platform-name {
           align-self: flex-start;
-          padding-top: 1px;
+          padding-top: 3px;
         }
 
         .singleline-departures {
           flex: 1 1 auto;
           min-width: 0;
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 5px;
+        }
+
+        .singleline-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 2px 8px 2px 2px;
+          border-radius: 999px;
+          background: var(--secondary-background-color, rgba(148, 163, 184, 0.14));
+        }
+
+        .singleline-chip-time {
+          font-size: 0.78rem;
+          font-weight: 700;
+          color: var(--primary-color, #0f766e);
+        }
+
+        .singleline-empty {
           font-size: 0.82rem;
-          font-weight: 600;
-          color: var(--primary-text-color, #111827);
-          line-height: 1.4;
-          overflow-wrap: anywhere;
+          color: var(--secondary-text-color, #6b7280);
         }
 
         .platform-content {
@@ -1011,7 +1036,7 @@ class FartHaCard extends HTMLElement {
         }
       </style>
 
-      <div class="card" tabindex="0" role="button" aria-label="Open departure schedule">
+      <div class="card" tabindex="0" role="button" aria-label="Abfahrtsplan öffnen">
         ${data && data.settings && data.settings.hideTitle
           ? ''
           : `
@@ -1022,9 +1047,9 @@ class FartHaCard extends HTMLElement {
 
         <div class="body">
           ${!this._hass || !this._config.entity
-            ? '<div class="error">Set the card entity configuration.</div>'
+            ? '<div class="error">Bitte Entity in der Kartenkonfiguration festlegen.</div>'
             : data && data.unavailable
-              ? '<div class="error">Entity unavailable.</div>'
+              ? '<div class="error">Entity nicht verfügbar.</div>'
               : rows}
         </div>
       </div>
@@ -1034,12 +1059,12 @@ class FartHaCard extends HTMLElement {
           <div class="modal-header">
             <h3>${title} • ${subtitle}</h3>
             <div class="modal-header-actions">
-              <button class="icon-button settings-toggle-button" type="button" aria-label="Platform settings">
+              <button class="icon-button settings-toggle-button" type="button" aria-label="Gleis-Einstellungen">
                 <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
                   <path fill="currentColor" d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.22,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.22,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.68 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z"></path>
                 </svg>
               </button>
-              <button class="icon-button close-button" type="button" aria-label="Close">
+              <button class="icon-button close-button" type="button" aria-label="Schließen">
                 <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
                   <path fill="currentColor" d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"></path>
                 </svg>

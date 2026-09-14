@@ -39,20 +39,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if entity_id:
             persistent_notification.async_create(
                 hass,
-                title=f"FART: {entry.title} added",
+                title=f"FART: {entry.title} hinzugefügt",
                 message=(
-                    "**One-time setup:** go to Settings -> Dashboards -> "
-                    "the ⋮ menu -> Resources -> Add Resource, and add "
-                    f"`{CARD_URL_PATH}` as a **JavaScript Module** "
-                    "(skip this if you've already added it for another station).\n\n"
-                    "Then add the departures card to a dashboard: edit a dashboard, "
-                    "click **+ Add Card**, choose **Manual**, and paste:\n\n"
+                    "**Einmalige Einrichtung:** Einstellungen -> Dashboards -> "
+                    "das ⋮-Menü -> Ressourcen -> Ressource hinzufügen, und "
+                    f"`{CARD_URL_PATH}` als **JavaScript-Modul** hinzufügen "
+                    "(überspringen, falls bereits für eine andere Haltestelle hinzugefügt).\n\n"
+                    "Danach die Abfahrten-Karte zu einem Dashboard hinzufügen: Dashboard "
+                    "bearbeiten, **+ Karte hinzufügen** klicken, **Manuell** wählen und "
+                    "einfügen:\n\n"
                     "```yaml\n"
                     "type: custom:fart-ha-card\n"
                     f"entity: {entity_id}\n"
                     f"title: {entry.title}\n"
                     "```\n\n"
-                    "[Open dashboards](/config/lovelace/dashboards)"
+                    "[Dashboards öffnen](/config/lovelace/dashboards)"
                 ),
                 notification_id=f"{DOMAIN}_setup_{entry.entry_id}",
             )
