@@ -696,10 +696,9 @@ class FartHaCard extends HTMLElement {
         .platform-name {
           flex: 0 0 auto;
           width: 76px;
-          font-size: 0.78rem;
-          font-weight: 700;
-          text-transform: uppercase;
-          color: var(--secondary-text-color, #6b7280);
+          font-size: 0.85rem;
+          font-weight: 400;
+          color: var(--primary-text-color, #1d1d1f);
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
