@@ -29,6 +29,12 @@ DEFAULT_EVENT_TYPE = "dep"
 DEFAULT_LIMIT = 10
 KVV_DM_API_URL = "https://www.kvv.de/tunnelEfaDirect.php"
 
+# How long to back off after consecutive fetch failures, so an outage on
+# KVV's end doesn't get hammered every SCAN_INTERVAL forever - it grows
+# 30s, 60s, 120s... up to a 5 minute ceiling, then resets on next success.
+FAILURE_BACKOFF_BASE_SECONDS = 30
+FAILURE_BACKOFF_MAX_SECONDS = 300
+
 # KVV/EFA mode-of-transport codes that represent rail-like services; anything
 # else (bus codes) is treated as "bus". Used only as a fallback for entries
 # that don't carry an explicit pointType.
@@ -44,7 +50,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
     }
 )
 
-SCAN_INTERVAL = timedelta(seconds=15)
+SCAN_INTERVAL = timedelta(seconds=60)
 
 
 async def async_setup_entry(
@@ -106,8 +112,16 @@ class FartDeparturesSensor(SensorEntity):
         self._attr_name = name
         self._attr_native_value = None
         self._attr_extra_state_attributes = {}
+        self._consecutive_failures = 0
+        self._next_retry_at: datetime | None = None
 
     async def async_update(self) -> None:
+        now = datetime.now(timezone.utc)
+        if self._next_retry_at is not None and now < self._next_retry_at:
+            # Still backing off after repeated failures - skip hitting the
+            # network again this cycle and keep the last known state.
+            return
+
         try:
             station_id, station_name, city_name = self._resolve_station_details()
             data = await self._fetch_departures(station_id=station_id, station_name=station_name, city_name=city_name)
@@ -121,8 +135,21 @@ class FartDeparturesSensor(SensorEntity):
                 "fetched_at": data["fetchedAt"],
             }
             self._attr_available = True
+            self._consecutive_failures = 0
+            self._next_retry_at = None
         except Exception as err:
-            _LOGGER.warning("Failed to fetch FART departures: %s", err)
+            self._consecutive_failures += 1
+            backoff_seconds = min(
+                FAILURE_BACKOFF_MAX_SECONDS,
+                FAILURE_BACKOFF_BASE_SECONDS * (2 ** (self._consecutive_failures - 1)),
+            )
+            self._next_retry_at = now + timedelta(seconds=backoff_seconds)
+            _LOGGER.warning(
+                "Failed to fetch FART departures: %s (backing off %ss after %s consecutive failure(s))",
+                err,
+                backoff_seconds,
+                self._consecutive_failures,
+            )
             self._attr_available = False
             self._attr_extra_state_attributes = {"error": str(err)}
 

@@ -331,7 +331,8 @@ class FartHaCard extends HTMLElement {
 
     return new Intl.DateTimeFormat(undefined, {
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
+      hour12: false
     }).format(date);
   }
 
@@ -731,7 +732,6 @@ class FartHaCard extends HTMLElement {
           align-items: center;
           gap: 10px;
           padding: 6px 0;
-          border-bottom: 1px solid var(--divider-color, rgba(0,0,0,0.06));
         }
 
         .settings-name-input {
