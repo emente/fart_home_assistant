@@ -250,18 +250,21 @@ class FartHaCard extends HTMLElement {
       }
 
       const nameInput = row.querySelector('.settings-name-input');
-      const hideInput = row.querySelector('.settings-hide-input');
-      const name = nameInput ? nameInput.value.trim() : '';
+      const showInput = row.querySelector('.settings-show-input');
+      const name = nameInput ? String(nameInput.value || '').trim() : '';
       if (name) {
         renames[key] = name;
       }
-      if (hideInput && hideInput.checked) {
+      // The switch reads "Gleis anzeigen" (show platform); internally we
+      // still only store the negative (hidden) case, since that's what the
+      // rest of the rendering code checks against.
+      if (showInput && !showInput.checked) {
         hidden[key] = true;
       }
     });
 
-    const hideTitleInput = this.shadowRoot.querySelector('.settings-hide-title-input');
-    const hideTitle = !!(hideTitleInput && hideTitleInput.checked);
+    const showTitleInput = this.shadowRoot.querySelector('.settings-show-title-input');
+    const hideTitle = !!(showTitleInput && !showTitleInput.checked);
 
     const compactLimitInput = this.shadowRoot.querySelector('.settings-compact-limit-input');
     const parsedCompactLimit = compactLimitInput ? parseInt(compactLimitInput.value, 10) : NaN;
@@ -270,8 +273,8 @@ class FartHaCard extends HTMLElement {
     const showCountdownInput = this.shadowRoot.querySelector('.settings-show-countdown-input');
     const showCountdown = !!(showCountdownInput && showCountdownInput.checked);
 
-    const hideDelayInput = this.shadowRoot.querySelector('.settings-hide-delay-input');
-    const hideDelay = !!(hideDelayInput && hideDelayInput.checked);
+    const showDelayInput = this.shadowRoot.querySelector('.settings-show-delay-input');
+    const hideDelay = !!(showDelayInput && !showDelayInput.checked);
 
     const singleLineInput = this.shadowRoot.querySelector('.settings-single-line-input');
     const singleLine = !!(singleLineInput && singleLineInput.checked);
@@ -547,50 +550,48 @@ class FartHaCard extends HTMLElement {
     };
 
     const titleRow = `
-      <div class="settings-row settings-row-title">
-        <div class="settings-title-label">Kartentitel</div>
-        <label class="settings-hide-label">
-          <input type="checkbox" class="settings-hide-title-input" ${settings.hideTitle ? 'checked' : ''}>
-          Ausblenden
-        </label>
+      <div class="settings-row settings-row-toggle">
+        <ha-formfield label="Kartentitel anzeigen" align-end>
+          <ha-switch class="settings-show-title-input" ${settings.hideTitle ? '' : 'checked'}></ha-switch>
+        </ha-formfield>
       </div>
     `;
 
     const compactLimitValue = settings.compactLimit || this._config.compact_limit || 1;
     const compactLimitRow = `
       <div class="settings-row settings-row-compact-limit">
-        <div class="settings-title-label">Abfahrten pro Gleis (kleine Karte)</div>
-        <input type="number" class="settings-compact-limit-input" min="1" max="20" value="${compactLimitValue}">
+        <ha-textfield
+          class="settings-compact-limit-input"
+          label="Abfahrten pro Gleis (kleine Karte)"
+          type="number"
+          min="1"
+          max="20"
+          value="${compactLimitValue}"
+        ></ha-textfield>
       </div>
     `;
 
     const countdownRow = `
       <div class="settings-row settings-row-toggle">
-        <div class="settings-title-label">Countdown statt Uhrzeit anzeigen</div>
-        <label class="settings-hide-label">
-          <input type="checkbox" class="settings-show-countdown-input" ${settings.showCountdown ? 'checked' : ''}>
-          Aktivieren
-        </label>
+        <ha-formfield label="Countdown statt Uhrzeit anzeigen" align-end>
+          <ha-switch class="settings-show-countdown-input" ${settings.showCountdown ? 'checked' : ''}></ha-switch>
+        </ha-formfield>
       </div>
     `;
 
-    const hideDelayRow = `
+    const showDelayRow = `
       <div class="settings-row settings-row-toggle">
-        <div class="settings-title-label">Verspätungsanzeige ausblenden</div>
-        <label class="settings-hide-label">
-          <input type="checkbox" class="settings-hide-delay-input" ${settings.hideDelay ? 'checked' : ''}>
-          Ausblenden
-        </label>
+        <ha-formfield label="Verspätung anzeigen" align-end>
+          <ha-switch class="settings-show-delay-input" ${settings.hideDelay ? '' : 'checked'}></ha-switch>
+        </ha-formfield>
       </div>
     `;
 
     const singleLineRow = `
       <div class="settings-row settings-row-toggle">
-        <div class="settings-title-label">Kleine Karte: eine Zeile pro Gleis</div>
-        <label class="settings-hide-label">
-          <input type="checkbox" class="settings-single-line-input" ${settings.singleLine ? 'checked' : ''}>
-          Aktivieren
-        </label>
+        <ha-formfield label="Kleine Karte: eine Zeile pro Gleis" align-end>
+          <ha-switch class="settings-single-line-input" ${settings.singleLine ? 'checked' : ''}></ha-switch>
+        </ha-formfield>
       </div>
     `;
 
@@ -605,16 +606,15 @@ class FartHaCard extends HTMLElement {
 
             return `
               <div class="settings-row" data-key="${escapeHtml(key)}">
-                <input
-                  type="text"
+                <ha-textfield
                   class="settings-name-input"
+                  label="Gleisname"
                   placeholder="${escapeHtml(defaultLabel)}"
                   value="${escapeHtml(currentName)}"
-                >
-                <label class="settings-hide-label">
-                  <input type="checkbox" class="settings-hide-input" ${isHidden ? 'checked' : ''}>
-                  Ausblenden
-                </label>
+                ></ha-textfield>
+                <ha-formfield label="Anzeigen" align-end>
+                  <ha-switch class="settings-show-input" ${isHidden ? '' : 'checked'}></ha-switch>
+                </ha-formfield>
               </div>
             `;
           })
@@ -625,11 +625,11 @@ class FartHaCard extends HTMLElement {
         ${titleRow}
         ${compactLimitRow}
         ${countdownRow}
-        ${hideDelayRow}
+        ${showDelayRow}
         ${singleLineRow}
         ${platformRows}
         <div class="settings-actions">
-          <button type="button" class="settings-save-button">Speichern</button>
+          <mwc-button raised class="settings-save-button">Speichern</mwc-button>
         </div>
       </div>
     `;
@@ -857,64 +857,33 @@ class FartHaCard extends HTMLElement {
         .settings-panel {
           display: flex;
           flex-direction: column;
-          gap: 10px;
+          gap: 4px;
         }
 
         .settings-row {
           display: flex;
           align-items: center;
           gap: 10px;
-          padding: 6px 0;
+          padding: 4px 0;
+        }
+
+        .settings-row-toggle ha-formfield {
+          width: 100%;
         }
 
         .settings-name-input {
           flex: 1 1 auto;
           min-width: 0;
-          padding: 6px 8px;
-          border-radius: 8px;
-          border: 1px solid var(--divider-color, rgba(0,0,0,0.16));
-          background: var(--card-background-color, #ffffff);
-          color: var(--primary-text-color, #1d1d1f);
         }
 
         .settings-compact-limit-input {
-          flex: 0 0 64px;
-          width: 64px;
-          padding: 6px 8px;
-          border-radius: 8px;
-          border: 1px solid var(--divider-color, rgba(0,0,0,0.16));
-          background: var(--card-background-color, #ffffff);
-          color: var(--primary-text-color, #1d1d1f);
-          text-align: center;
-        }
-
-        .settings-hide-label {
-          flex: 0 0 auto;
-          display: flex;
-          align-items: center;
-          gap: 4px;
-          color: var(--secondary-text-color, #6b7280);
-        }
-
-        .settings-title-label {
-          flex: 1 1 auto;
-          font-weight: 700;
+          width: 100%;
         }
 
         .settings-actions {
           display: flex;
           justify-content: flex-end;
-          padding-top: 4px;
-        }
-
-        .settings-save-button {
-          border: none;
-          border-radius: 8px;
-          padding: 8px 16px;
-          background: var(--primary-color, #0f766e);
-          color: var(--text-primary-color, #fff);
-          font-weight: 700;
-          cursor: pointer;
+          padding-top: 8px;
         }
 
         .expanded-grid {
