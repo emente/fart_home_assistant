@@ -228,7 +228,10 @@ class FartHaCard extends HTMLElement {
       renames: (entry && entry.renames) || {},
       hidden: (entry && entry.hidden) || {},
       hideTitle: !!(entry && entry.hideTitle),
-      compactLimit: (entry && entry.compactLimit) || null
+      compactLimit: (entry && entry.compactLimit) || null,
+      showCountdown: !!(entry && entry.showCountdown),
+      hideDelay: !!(entry && entry.hideDelay),
+      singleLine: !!(entry && entry.singleLine)
     };
   }
 
@@ -264,9 +267,18 @@ class FartHaCard extends HTMLElement {
     const parsedCompactLimit = compactLimitInput ? parseInt(compactLimitInput.value, 10) : NaN;
     const compactLimit = Number.isFinite(parsedCompactLimit) && parsedCompactLimit > 0 ? parsedCompactLimit : null;
 
+    const showCountdownInput = this.shadowRoot.querySelector('.settings-show-countdown-input');
+    const showCountdown = !!(showCountdownInput && showCountdownInput.checked);
+
+    const hideDelayInput = this.shadowRoot.querySelector('.settings-hide-delay-input');
+    const hideDelay = !!(hideDelayInput && hideDelayInput.checked);
+
+    const singleLineInput = this.shadowRoot.querySelector('.settings-single-line-input');
+    const singleLine = !!(singleLineInput && singleLineInput.checked);
+
     this._settingsByStation = {
       ...this._settingsByStation,
-      [settingsKey]: { renames, hidden, hideTitle, compactLimit }
+      [settingsKey]: { renames, hidden, hideTitle, compactLimit, showCountdown, hideDelay, singleLine }
     };
     this._settingsView = false;
     this.render();
@@ -336,6 +348,28 @@ class FartHaCard extends HTMLElement {
     }).format(date);
   }
 
+  formatCountdown(dateString) {
+    if (!dateString) {
+      return '--';
+    }
+
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) {
+      return '--';
+    }
+
+    const diffMinutes = Math.round((date.getTime() - Date.now()) / 60000);
+    if (diffMinutes <= 0) {
+      return 'due';
+    }
+
+    return `${diffMinutes} min`;
+  }
+
+  formatDisplayTime(dateString, settings) {
+    return settings && settings.showCountdown ? this.formatCountdown(dateString) : this.formatTime(dateString);
+  }
+
   formatPlatformLabel(platform) {
     if (!platform) {
       return 'Platform';
@@ -365,7 +399,33 @@ class FartHaCard extends HTMLElement {
       return '<div class="empty-message">No platform data available.</div>';
     }
 
-    const compactLimit = Math.max(1, (data.settings && data.settings.compactLimit) || this._config.compact_limit || 1);
+    const settings = data.settings || {};
+    const compactLimit = Math.max(1, settings.compactLimit || this._config.compact_limit || 1);
+
+    if (settings.singleLine) {
+      return data.platforms
+        .map((platformEntry) => {
+          const departures = Array.isArray(platformEntry.departures) ? platformEntry.departures : [];
+          const visibleDepartures = departures.slice(0, compactLimit);
+
+          const summary = visibleDepartures.length === 0
+            ? 'No departures'
+            : visibleDepartures
+                .map((departure) => {
+                  const realTime = departure.realTime || departure.plannedTime;
+                  return `(${departure.lineName || '—'}) ${this.formatDisplayTime(realTime, settings)}`;
+                })
+                .join(' ');
+
+          return `
+            <div class="platform-row platform-row-singleline">
+              <div class="platform-name">${this.formatPlatformLabel(platformEntry.platform)}</div>
+              <div class="singleline-departures">${summary}</div>
+            </div>
+          `;
+        })
+        .join('');
+    }
 
     return data.platforms
       .map((platformEntry) => {
@@ -401,9 +461,9 @@ class FartHaCard extends HTMLElement {
                 <div class="platform-content">
                   <div class="line-and-time">
                     <span class="line-badge" style="background:${lineStyle.background}; color:${lineStyle.text};">${departure.lineName || '—'}</span>
-                    <span class="time">${this.formatTime(realTime)}</span>
+                    <span class="time">${this.formatDisplayTime(realTime, settings)}</span>
                   </div>
-                  <div class="meta">${delayMin > 0 ? `+${delayMin} min` : 'on time'}</div>
+                  ${settings.hideDelay ? '' : `<div class="meta">${delayMin > 0 ? `+${delayMin} min` : 'on time'}</div>`}
                 </div>
               </div>
             `;
@@ -417,6 +477,8 @@ class FartHaCard extends HTMLElement {
     if (!data || !Array.isArray(data.platforms) || data.platforms.length === 0) {
       return '<div class="expanded-empty">No departures available.</div>';
     }
+
+    const settings = data.settings || {};
 
     const columns = data.platforms
       .map((platformEntry) => {
@@ -446,8 +508,8 @@ class FartHaCard extends HTMLElement {
                   <div class="expanded-direction">${direction}</div>
                 </div>
                 <div class="expanded-meta">
-                  <span class="expanded-time">${this.formatTime(realTime)}</span>
-                  <span class="expanded-delay">${delayMin > 0 ? `+${delayMin} min` : 'on time'}</span>
+                  <span class="expanded-time">${this.formatDisplayTime(realTime, settings)}</span>
+                  ${settings.hideDelay ? '' : `<span class="expanded-delay">${delayMin > 0 ? `+${delayMin} min` : 'on time'}</span>`}
                 </div>
               </div>
             `;
@@ -468,7 +530,15 @@ class FartHaCard extends HTMLElement {
 
   buildSettingsPanel(data) {
     const rawPlatforms = data?.rawPlatforms || [];
-    const settings = data?.settings || { renames: {}, hidden: {}, hideTitle: false, compactLimit: null };
+    const settings = data?.settings || {
+      renames: {},
+      hidden: {},
+      hideTitle: false,
+      compactLimit: null,
+      showCountdown: false,
+      hideDelay: false,
+      singleLine: false
+    };
 
     const titleRow = `
       <div class="settings-row settings-row-title">
@@ -485,6 +555,36 @@ class FartHaCard extends HTMLElement {
       <div class="settings-row settings-row-compact-limit">
         <div class="settings-title-label">Departures per platform (small card)</div>
         <input type="number" class="settings-compact-limit-input" min="1" max="20" value="${compactLimitValue}">
+      </div>
+    `;
+
+    const countdownRow = `
+      <div class="settings-row settings-row-toggle">
+        <div class="settings-title-label">Show countdown instead of time</div>
+        <label class="settings-hide-label">
+          <input type="checkbox" class="settings-show-countdown-input" ${settings.showCountdown ? 'checked' : ''}>
+          Enable
+        </label>
+      </div>
+    `;
+
+    const hideDelayRow = `
+      <div class="settings-row settings-row-toggle">
+        <div class="settings-title-label">Hide delay / on-time indicator</div>
+        <label class="settings-hide-label">
+          <input type="checkbox" class="settings-hide-delay-input" ${settings.hideDelay ? 'checked' : ''}>
+          Hide
+        </label>
+      </div>
+    `;
+
+    const singleLineRow = `
+      <div class="settings-row settings-row-toggle">
+        <div class="settings-title-label">Small card: single line per platform</div>
+        <label class="settings-hide-label">
+          <input type="checkbox" class="settings-single-line-input" ${settings.singleLine ? 'checked' : ''}>
+          Enable
+        </label>
       </div>
     `;
 
@@ -518,6 +618,9 @@ class FartHaCard extends HTMLElement {
       <div class="settings-panel">
         ${titleRow}
         ${compactLimitRow}
+        ${countdownRow}
+        ${hideDelayRow}
+        ${singleLineRow}
         ${platformRows}
         <div class="settings-actions">
           <button type="button" class="settings-save-button">Save</button>
@@ -594,6 +697,21 @@ class FartHaCard extends HTMLElement {
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
+        }
+
+        .platform-row-singleline .platform-name {
+          align-self: flex-start;
+          padding-top: 1px;
+        }
+
+        .singleline-departures {
+          flex: 1 1 auto;
+          min-width: 0;
+          font-size: 0.82rem;
+          font-weight: 600;
+          color: var(--primary-text-color, #111827);
+          line-height: 1.4;
+          overflow-wrap: anywhere;
         }
 
         .platform-content {
