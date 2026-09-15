@@ -141,6 +141,7 @@ class FartHaCard extends HTMLElement {
     this._settingsLoaded = false;
     this._settingsLoading = false;
     this._instanceIndex = null;
+    this._tickTimer = null;
   }
 
   setConfig(config) {
@@ -172,12 +173,33 @@ class FartHaCard extends HTMLElement {
     if (this._instanceIndex === null) {
       this._instanceIndex = registerCardInstance(this);
     }
+
+    // The countdown display (and "due"/delay wording) is computed client-side
+    // from already-known departure times, so it shouldn't depend on how
+    // often the backend actually re-fetches from KVV (every few minutes).
+    // Re-render on our own timer to keep it ticking, independent of hass
+    // updates - skip while the settings form is open so this doesn't wipe
+    // out in-progress edits, same guard as the hass setter below.
+    if (!this._tickTimer) {
+      const intervalMs = Math.max(5, this._config.refresh_seconds || 15) * 1000;
+      this._tickTimer = setInterval(() => {
+        if (!this._settingsView) {
+          this.render();
+        }
+      }, intervalMs);
+    }
+
     this.render();
   }
 
   disconnectedCallback() {
     unregisterCardInstance(this);
     this._instanceIndex = null;
+
+    if (this._tickTimer) {
+      clearInterval(this._tickTimer);
+      this._tickTimer = null;
+    }
   }
 
   async _loadSettings() {
