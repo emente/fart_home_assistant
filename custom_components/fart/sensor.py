@@ -16,6 +16,11 @@ from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
+from homeassistant.helpers.update_coordinator import (
+    CoordinatorEntity,
+    DataUpdateCoordinator,
+    UpdateFailed,
+)
 from homeassistant.config_entries import ConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
@@ -29,11 +34,13 @@ DEFAULT_EVENT_TYPE = "dep"
 DEFAULT_LIMIT = 10
 KVV_DM_API_URL = "https://www.kvv.de/tunnelEfaDirect.php"
 
-# How long to back off after consecutive fetch failures, so an outage on
-# KVV's end doesn't get hammered every SCAN_INTERVAL forever - it grows
-# 30s, 60s, 120s... up to a 5 minute ceiling, then resets on next success.
-FAILURE_BACKOFF_BASE_SECONDS = 30
-FAILURE_BACKOFF_MAX_SECONDS = 300
+# The module-level SCAN_INTERVAL constant (the old, legacy way of setting a
+# platform's poll interval) is silently ignored for entities set up via a
+# config entry - it's only honored for YAML-configured platforms. That's why
+# this kept polling every ~15s (Home Assistant's internal default) no matter
+# how high SCAN_INTERVAL was set. A DataUpdateCoordinator is the actual,
+# reliable way to control the interval regardless of setup path.
+UPDATE_INTERVAL = timedelta(minutes=5)
 
 # KVV/EFA mode-of-transport codes that represent rail-like services; anything
 # else (bus codes) is treated as "bus". Used only as a fallback for entries
@@ -50,22 +57,26 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
     }
 )
 
-SCAN_INTERVAL = timedelta(seconds=60)
-
 
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
+    coordinator = FartDataCoordinator(
+        hass,
+        station_id=config_entry.data.get(CONF_STATION_ID),
+        station_selector=None,
+        limit=DEFAULT_LIMIT,
+    )
+    await coordinator.async_config_entry_first_refresh()
+
     async_add_entities(
         [
             FartDeparturesSensor(
-                station_id=config_entry.data.get(CONF_STATION_ID),
-                station_selector=None,
+                coordinator,
                 name=config_entry.title,
                 event_type=DEFAULT_EVENT_TYPE,
-                limit=DEFAULT_LIMIT,
             )
         ]
     )
@@ -80,78 +91,46 @@ async def async_setup_platform(
     if CONF_STATION_ID not in config and CONF_STATION_SELECTOR not in config:
         raise ValueError("Either station_id or station_selector must be configured")
 
+    coordinator = FartDataCoordinator(
+        hass,
+        station_id=config.get(CONF_STATION_ID),
+        station_selector=config.get(CONF_STATION_SELECTOR),
+        limit=config[CONF_LIMIT],
+    )
+    await coordinator.async_config_entry_first_refresh()
+
     async_add_entities(
         [
             FartDeparturesSensor(
-                station_id=config.get(CONF_STATION_ID),
-                station_selector=config.get(CONF_STATION_SELECTOR),
+                coordinator,
                 name=config[CONF_NAME],
                 event_type=config[CONF_EVENT_TYPE],
-                limit=config[CONF_LIMIT],
             )
         ]
     )
 
 
-class FartDeparturesSensor(SensorEntity):
-    _attr_should_poll = True
-
+class FartDataCoordinator(DataUpdateCoordinator[dict]):
     def __init__(
         self,
+        hass: HomeAssistant,
         station_id: str | None,
         station_selector: str | None,
-        name: str,
-        event_type: str,
         limit: int,
     ) -> None:
+        super().__init__(hass, _LOGGER, name="FART", update_interval=UPDATE_INTERVAL)
         self._station_id = station_id
         self._station_selector = station_selector
-        self._event_type = event_type
         self._limit = limit
-        self._attr_unique_id = f"fart_{station_id or station_selector or 'unconfigured'}_{event_type}"
-        self._attr_name = name
-        self._attr_native_value = None
-        self._attr_extra_state_attributes = {}
-        self._consecutive_failures = 0
-        self._next_retry_at: datetime | None = None
 
-    async def async_update(self) -> None:
-        now = datetime.now(timezone.utc)
-        if self._next_retry_at is not None and now < self._next_retry_at:
-            # Still backing off after repeated failures - skip hitting the
-            # network again this cycle and keep the last known state.
-            return
-
+    async def _async_update_data(self) -> dict:
         try:
             station_id, station_name, city_name = self._resolve_station_details()
-            data = await self._fetch_departures(station_id=station_id, station_name=station_name, city_name=city_name)
-            self._attr_native_value = data["fetchedAt"]
-            self._attr_extra_state_attributes = {
-                "station_id": station_id,
-                "station_name": station_name,
-                "city_name": city_name,
-                "event_type": self._event_type,
-                "platforms": data["platforms"],
-                "fetched_at": data["fetchedAt"],
-            }
-            self._attr_available = True
-            self._consecutive_failures = 0
-            self._next_retry_at = None
+            return await self._fetch_departures(
+                station_id=station_id, station_name=station_name, city_name=city_name
+            )
         except Exception as err:
-            self._consecutive_failures += 1
-            backoff_seconds = min(
-                FAILURE_BACKOFF_MAX_SECONDS,
-                FAILURE_BACKOFF_BASE_SECONDS * (2 ** (self._consecutive_failures - 1)),
-            )
-            self._next_retry_at = now + timedelta(seconds=backoff_seconds)
-            _LOGGER.warning(
-                "Failed to fetch FART departures: %s (backing off %ss after %s consecutive failure(s))",
-                err,
-                backoff_seconds,
-                self._consecutive_failures,
-            )
-            self._attr_available = False
-            self._attr_extra_state_attributes = {"error": str(err)}
+            raise UpdateFailed(str(err)) from err
 
     def _resolve_station_details(self) -> tuple[str, str, str]:
         if self._station_id:
@@ -234,10 +213,40 @@ class FartDeparturesSensor(SensorEntity):
         platforms = _map_departures_to_platforms(departures)
 
         return {
-            "stationName": station_name,
-            "cityName": city_name,
+            "station_id": station_id,
+            "station_name": station_name,
+            "city_name": city_name,
             "platforms": platforms,
             "fetchedAt": datetime.now(timezone.utc).isoformat(),
+        }
+
+
+class FartDeparturesSensor(CoordinatorEntity[FartDataCoordinator], SensorEntity):
+    def __init__(self, coordinator: FartDataCoordinator, name: str, event_type: str) -> None:
+        super().__init__(coordinator)
+        self._event_type = event_type
+        station_id = coordinator._station_id or coordinator._station_selector
+        self._attr_unique_id = f"fart_{station_id or 'unconfigured'}_{event_type}"
+        self._attr_name = name
+
+    @property
+    def native_value(self) -> str | None:
+        data = self.coordinator.data
+        return data.get("fetchedAt") if data else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, object]:
+        data = self.coordinator.data
+        if not data:
+            return {}
+
+        return {
+            "station_id": data.get("station_id"),
+            "station_name": data.get("station_name"),
+            "city_name": data.get("city_name"),
+            "event_type": self._event_type,
+            "platforms": data.get("platforms"),
+            "fetched_at": data.get("fetchedAt"),
         }
 
 
