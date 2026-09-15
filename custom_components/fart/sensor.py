@@ -222,6 +222,16 @@ class FartDataCoordinator(DataUpdateCoordinator[dict]):
 
 
 class FartDeparturesSensor(CoordinatorEntity[FartDataCoordinator], SensorEntity):
+    # CoordinatorEntity doesn't disable base entity polling on its own -
+    # Entity.should_poll defaults to True. Without this, the entity was
+    # still being polled (and writing state) every 15s via the base
+    # no-op async_update, on top of the coordinator's own 5-minute
+    # schedule - harmless to actual KVV traffic (nothing in the inherited
+    # async_update hits the network) but pointless churn, and confusing
+    # if you're watching last_updated/history expecting it to reflect the
+    # real fetch interval.
+    _attr_should_poll = False
+
     def __init__(self, coordinator: FartDataCoordinator, name: str, event_type: str) -> None:
         super().__init__(coordinator)
         self._event_type = event_type
